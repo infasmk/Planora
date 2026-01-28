@@ -70,7 +70,7 @@ const App: React.FC = () => {
         if (parsed.tasks) setTasks(parsed.tasks);
         if (parsed.reflections) setReflections(parsed.reflections);
         if (parsed.habits) setHabits(parsed.habits);
-        if (parsed.theme) setTheme(parsed.theme);
+        if (parsed.theme) setTheme(parsed.theme || 'light');
       } catch (e) { console.error("Restore failed", e); }
     }
   }, []);
@@ -88,7 +88,7 @@ const App: React.FC = () => {
     const xp = (completedTasks * 25) + (completedHabits * 10);
     const level = Math.floor(xp / 250) + 1;
     
-    // Calculate Life Score (Last 7 days consistency)
+    // Life Score (Last 7 days consistency)
     const last7Days = Array.from({ length: 7 }).map((_, i) => {
       const d = new Date();
       d.setDate(d.getDate() - i);
@@ -98,12 +98,12 @@ const App: React.FC = () => {
     let consistencySum = 0;
     last7Days.forEach(date => {
       const dayTasks = tasks.filter(t => t.date === date);
-      const dayHabits = habits.length;
-      if (dayTasks.length + dayHabits === 0) return;
+      const totalDayHabits = habits.length;
+      if (dayTasks.length + totalDayHabits === 0) return;
       
       const taskDone = dayTasks.filter(t => t.status === Status.COMPLETED).length;
       const habitsDone = habits.filter(h => h.history[date]).length;
-      consistencySum += (taskDone + habitsDone) / (dayTasks.length + dayHabits || 1);
+      consistencySum += (taskDone + habitsDone) / (dayTasks.length + totalDayHabits || 1);
     });
 
     const lifeScore = Math.round((consistencySum / 7) * 100);
@@ -112,8 +112,8 @@ const App: React.FC = () => {
   }, [tasks, habits]);
 
   const xpProgress = useMemo(() => {
-    const currentLevelXP = (stats.level - 1) * 250;
-    const relativeXP = stats.xp - currentLevelXP;
+    const currentLevelXPStart = (stats.level - 1) * 250;
+    const relativeXP = stats.xp - currentLevelXPStart;
     return (relativeXP / 250) * 100;
   }, [stats]);
 
@@ -178,22 +178,22 @@ const App: React.FC = () => {
         <div className="pt-6 border-t dark:border-slate-800 space-y-4">
           <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800">
             {theme === 'light' ? <Icons.Moon /> : <Icons.Sun />}
-            <span className="text-sm font-medium">Theme</span>
+            <span className="text-sm font-medium">Appearance</span>
           </button>
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-w-0 pb-20 md:pb-0 overflow-hidden">
+      <main className="flex-1 flex flex-col min-w-0 pb-16 md:pb-0 overflow-hidden">
         
         {/* Top Gamification Bar */}
         <header className="h-16 md:h-20 border-b dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-4 md:px-8 flex items-center justify-between z-10">
           <div className="flex items-center gap-3 md:gap-6 flex-1">
             <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-3">
-              <span className="text-[10px] md:text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest leading-none">Lv. {stats.level}</span>
-              <div className="w-24 md:w-48 h-1.5 md:h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <span className="text-[10px] md:text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest leading-none">Character Lv. {stats.level}</span>
+              <div className="w-24 md:w-48 h-1.5 md:h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
                 <div 
-                  className="h-full bg-indigo-500 transition-all duration-700 ease-out" 
+                  className="h-full bg-indigo-500 shadow-[0_0_8px_rgba(79,70,229,0.5)] transition-all duration-700 ease-out" 
                   style={{ width: `${xpProgress}%` }}
                 />
               </div>
@@ -210,9 +210,6 @@ const App: React.FC = () => {
               <p className="text-sm md:text-lg font-black text-indigo-600 dark:text-indigo-400">{stats.lifeScore}%</p>
             </div>
             <div className="hidden md:block w-px h-8 bg-slate-200 dark:bg-slate-800" />
-            <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} className="md:hidden p-2 text-slate-500">
-              {theme === 'light' ? <Icons.Moon /> : <Icons.Sun />}
-            </button>
             <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-slate-100 dark:bg-slate-800 border-2 border-white dark:border-slate-700 shadow-sm overflow-hidden flex items-center justify-center text-sm">
                👤
             </div>
@@ -220,15 +217,14 @@ const App: React.FC = () => {
         </header>
 
         {/* Dynamic View Scroll Area */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth no-scrollbar">
           
           {activeView === 'daily' && (
             <div className="max-w-5xl mx-auto flex flex-col gap-6 md:gap-8 animate-in fade-in duration-500">
               
-              {/* Top Banner (Mobile) / Left Col (Desktop) */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
                 
-                {/* Stats Summary (Mobile Friendly) */}
+                {/* Left Col (Desktop) / Top Banner (Mobile) */}
                 <div className="col-span-12 lg:col-span-4 flex flex-col gap-6 order-2 lg:order-1">
                   <section className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border dark:border-slate-800 shadow-sm">
                     <h3 className="text-xs font-black uppercase tracking-widest mb-4 flex items-center justify-between text-slate-400">
@@ -239,7 +235,7 @@ const App: React.FC = () => {
                       {habits.length === 0 && (
                         <div className="py-6 text-center border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-2xl">
                            <p className="text-[10px] text-slate-400 font-medium">No habits initialized</p>
-                           <button onClick={() => setActiveView('habits')} className="mt-1 text-[10px] font-bold text-indigo-500">+ Setup</button>
+                           <button onClick={() => setActiveView('habits')} className="mt-1 text-[10px] font-bold text-indigo-500">+ Setup character traits</button>
                         </div>
                       )}
                       {habits.map(habit => (
@@ -272,7 +268,7 @@ const App: React.FC = () => {
 
                   <div className="bg-indigo-600 rounded-[2rem] p-6 md:p-8 text-white relative overflow-hidden group shadow-xl shadow-indigo-100 dark:shadow-none">
                      <div className="relative z-10">
-                       <p className="text-[10px] font-black uppercase opacity-70 tracking-widest">Day Completion</p>
+                       <p className="text-[10px] font-black uppercase opacity-70 tracking-widest">Efficiency Rating</p>
                        <p className="text-4xl md:text-5xl font-black mt-1 md:mt-2">{dayCompletion}%</p>
                        <div className="mt-4 md:mt-8 h-1.5 md:h-2 w-full bg-white/20 rounded-full">
                          <div className="h-full bg-white rounded-full transition-all duration-1000" style={{ width: `${dayCompletion}%` }} />
@@ -282,14 +278,14 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Planner Section (Mobile Friendly) */}
+                {/* Right Col (Desktop) / Main Planner (Mobile) */}
                 <div className="col-span-12 lg:col-span-8 flex flex-col gap-6 order-1 lg:order-2">
                   <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border dark:border-slate-800 shadow-sm overflow-hidden flex flex-col">
                     <header className="p-4 md:p-6 border-b dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
                       <div className="flex items-center gap-2 md:gap-4 overflow-x-auto no-scrollbar">
                         <button 
                           onClick={() => setSelectedDate(getTodayStr())}
-                          className={`text-xs md:text-sm font-black tracking-tighter whitespace-nowrap transition-all px-3 py-1.5 rounded-full ${selectedDate === getTodayStr() ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400' : 'text-slate-400 hover:text-slate-600'}`}
+                          className={`text-xs md:text-sm font-black tracking-tighter whitespace-nowrap transition-all px-4 py-2 rounded-full ${selectedDate === getTodayStr() ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                         >
                           Today
                         </button>
@@ -297,24 +293,24 @@ const App: React.FC = () => {
                           type="date" 
                           value={selectedDate} 
                           onChange={e => setSelectedDate(e.target.value)}
-                          className="text-[10px] md:text-xs font-bold px-3 py-1.5 bg-slate-50 dark:bg-slate-800 rounded-full border-none focus:ring-1 focus:ring-indigo-500 outline-none"
+                          className="text-[10px] md:text-xs font-bold px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-full border-none focus:ring-2 focus:ring-indigo-500 outline-none"
                         />
                       </div>
                       <button 
                         onClick={() => { setEditingTask(null); setIsTaskModalOpen(true); }}
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] md:text-xs font-black rounded-xl transition-all shadow-md active:scale-95"
+                        className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] md:text-xs font-black rounded-xl transition-all shadow-md active:scale-95"
                       >
-                        + MISSION
+                        + NEW MISSION
                       </button>
                     </header>
 
-                    <div className="divide-y dark:divide-slate-800 flex-1 overflow-y-auto min-h-[300px] md:max-h-[600px]">
+                    <div className="divide-y dark:divide-slate-800 flex-1 overflow-y-auto min-h-[300px] max-h-[500px] no-scrollbar">
                       {filteredTasks.length === 0 && (
-                        <div className="py-16 md:py-20 text-center text-slate-300">
-                           <div className="w-12 h-12 bg-slate-50 dark:bg-slate-800/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <div className="py-20 text-center text-slate-300">
+                           <div className="w-14 h-14 bg-slate-50 dark:bg-slate-800/50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-100 dark:border-slate-800">
                              <Icons.Calendar />
                            </div>
-                           <p className="text-xs font-medium">No objectives assigned.</p>
+                           <p className="text-xs font-medium uppercase tracking-widest text-slate-400">Idle cycle. Add a quest.</p>
                         </div>
                       )}
                       {filteredTasks.map(task => (
@@ -342,7 +338,7 @@ const App: React.FC = () => {
                                 e.stopPropagation();
                                 setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: t.status === Status.COMPLETED ? Status.PENDING : Status.COMPLETED } : t));
                               }}
-                              className={`w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl flex items-center justify-center transition-all active:scale-90 ${
+                              className={`w-9 h-9 md:w-11 md:h-11 rounded-xl md:rounded-2xl flex items-center justify-center transition-all active:scale-90 ${
                                 task.status === Status.COMPLETED 
                                   ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' 
                                   : 'bg-slate-50 dark:bg-slate-800 text-slate-300'
@@ -364,33 +360,33 @@ const App: React.FC = () => {
              <div className="max-w-6xl mx-auto space-y-6 md:space-y-12 animate-in slide-in-from-bottom-4 duration-500">
                 <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                    <div>
-                     <h2 className="text-3xl md:text-4xl font-black tracking-tighter">HABIT MATRIX</h2>
-                     <p className="text-xs md:text-sm text-slate-500 font-medium">Your consistency spreadsheet.</p>
+                     <h2 className="text-3xl md:text-4xl font-black tracking-tighter uppercase">Habit Identity Matrix</h2>
+                     <p className="text-xs md:text-sm text-slate-500 font-medium">Character consistency over the last 7 cycles.</p>
                    </div>
                    <button 
                     onClick={() => {
-                      const name = prompt("Habit Name:");
+                      const name = prompt("Trait Name:");
                       if (name) setHabits(prev => [...prev, { 
                         id: generateId(), 
                         name, 
-                        icon: '🔥', 
-                        category: 'Growth', 
+                        icon: '⚡', 
+                        category: 'Skill', 
                         history: {}, 
                         createdAt: getTodayStr() 
                       }]);
                     }}
-                    className="w-full md:w-auto px-6 py-3 md:py-4 bg-indigo-600 text-white text-xs md:text-sm font-black rounded-xl md:rounded-2xl shadow-xl active:scale-95 transition-all"
+                    className="w-full md:w-auto px-6 py-4 bg-indigo-600 text-white text-xs md:text-sm font-black rounded-2xl shadow-xl active:scale-95 transition-all"
                    >
-                     + ADD NEW HABIT
+                     + DEFINE NEW TRAIT
                    </button>
                 </header>
 
                 <div className="bg-white dark:bg-slate-900 rounded-[2rem] md:rounded-[3rem] border dark:border-slate-800 overflow-hidden shadow-sm">
                    <div className="overflow-x-auto no-scrollbar">
-                      <table className="w-full text-left border-collapse min-w-[600px]">
+                      <table className="w-full text-left border-collapse min-w-[500px]">
                          <thead>
                             <tr className="bg-slate-50 dark:bg-slate-800/50">
-                               <th className="p-4 md:p-8 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest border-b dark:border-slate-800 sticky left-0 bg-slate-50 dark:bg-slate-900 z-10">Habit Identity</th>
+                               <th className="p-4 md:p-8 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest border-b dark:border-slate-800 sticky left-0 bg-slate-50 dark:bg-slate-800/50 z-20">Character Trait</th>
                                {Array.from({ length: 7 }).map((_, i) => {
                                  const d = new Date();
                                  d.setDate(d.getDate() - (6 - i));
@@ -405,7 +401,7 @@ const App: React.FC = () => {
                          <tbody className="divide-y dark:divide-slate-800">
                             {habits.map(habit => (
                               <tr key={habit.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                                 <td className="p-4 md:p-8 border-r dark:border-slate-800 sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/30 z-10">
+                                 <td className="p-4 md:p-8 border-r dark:border-slate-800 sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/30 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
                                     <div className="flex items-center gap-3">
                                        <span className="text-xl">{habit.icon}</span>
                                        <div>
@@ -423,10 +419,10 @@ const App: React.FC = () => {
                                       <td key={i} className="p-2 text-center">
                                          <div 
                                           onClick={() => toggleHabit(habit.id, dStr)}
-                                          className={`w-7 h-7 md:w-8 md:h-8 mx-auto rounded-lg cursor-pointer transition-all flex items-center justify-center active:scale-90 ${
+                                          className={`w-7 h-7 md:w-9 md:h-9 mx-auto rounded-xl cursor-pointer transition-all flex items-center justify-center active:scale-90 ${
                                             isDone 
-                                              ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' 
-                                              : 'bg-slate-100 dark:bg-slate-800'
+                                              ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' 
+                                              : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700'
                                           }`}
                                          >
                                            {isDone && <Icons.Check />}
@@ -440,21 +436,21 @@ const App: React.FC = () => {
                       </table>
                    </div>
                 </div>
-                <p className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-widest">Scroll right for full matrix →</p>
+                <p className="text-center text-[10px] text-slate-400 font-black uppercase tracking-widest opacity-50">Swipe matrix horizontally to view log history</p>
              </div>
           )}
 
           {activeView === 'analytics' && (
             <div className="max-w-6xl mx-auto space-y-6 md:space-y-8 animate-in zoom-in-95 duration-500">
                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
-                  <div className="bg-white dark:bg-slate-900 p-6 md:p-8 rounded-[2rem] border dark:border-slate-800 shadow-sm flex flex-col justify-between">
-                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Velocity</p>
+                  <div className="bg-white dark:bg-slate-900 p-6 md:p-10 rounded-[2.5rem] border dark:border-slate-800 shadow-sm flex flex-col justify-between">
+                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aggregate Velocity</p>
                      <div className="mt-4">
-                        <p className="text-4xl md:text-5xl font-black text-indigo-600 dark:text-indigo-400">{stats.lifeScore}%</p>
-                        <p className="text-[10px] md:text-xs font-bold text-emerald-500 mt-2">↑ Consistent performance</p>
+                        <p className="text-5xl md:text-6xl font-black text-indigo-600 dark:text-indigo-400">{stats.lifeScore}%</p>
+                        <p className="text-[10px] md:text-xs font-bold text-emerald-500 mt-2 uppercase tracking-widest">↑ High performance detected</p>
                      </div>
                   </div>
-                  <div className="md:col-span-2 bg-white dark:bg-slate-900 p-6 md:p-8 rounded-[2rem] border dark:border-slate-800 shadow-sm h-[250px] md:h-[300px]">
+                  <div className="md:col-span-2 bg-white dark:bg-slate-900 p-6 md:p-8 rounded-[2.5rem] border dark:border-slate-800 shadow-sm h-[280px] md:h-[350px]">
                      <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={[
                           { name: 'Mon', v: 40 }, { name: 'Tue', v: 70 }, { name: 'Wed', v: 65 }, 
@@ -469,9 +465,21 @@ const App: React.FC = () => {
                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eee" />
                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 900 }} />
                            <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 20px rgba(0,0,0,0.05)', fontSize: '10px' }} />
-                           <Area type="monotone" dataKey="v" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorV)" />
+                           <Area type="monotone" dataKey="v" stroke="#4f46e5" strokeWidth={4} fillOpacity={1} fill="url(#colorV)" />
                         </AreaChart>
                      </ResponsiveContainer>
+                  </div>
+               </div>
+
+               <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border dark:border-slate-800 shadow-sm">
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-6">Achievement Badges</h3>
+                  <div className="flex flex-wrap gap-4">
+                     {['First Mission', 'Level 5 reached', '7-Day Streak', 'Perfect Matrix'].map((badge, idx) => (
+                       <div key={idx} className="px-5 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center gap-3">
+                         <span className="text-xl">🏆</span>
+                         <span className="text-xs font-bold">{badge}</span>
+                       </div>
+                     ))}
                   </div>
                </div>
             </div>
@@ -479,21 +487,21 @@ const App: React.FC = () => {
 
           {activeView === 'journal' && (
             <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in duration-500">
-               <h2 className="text-3xl font-black tracking-tighter">CHARACTER LOG</h2>
+               <h2 className="text-3xl font-black tracking-tighter uppercase">Character Manifest</h2>
                <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 md:p-10 border dark:border-slate-800 shadow-sm space-y-6">
-                  <div className="space-y-2">
-                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Journal Entry ({formatDisplayDate(selectedDate)})</label>
+                  <div className="space-y-3">
+                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Entry for {formatDisplayDate(selectedDate)}</label>
                      <textarea 
                        value={reflections[selectedDate]?.journal || ''}
                        onChange={e => {
                          const val = e.target.value;
                          setReflections(prev => ({ ...prev, [selectedDate]: { ...prev[selectedDate], journal: val, date: selectedDate, well: '', improvement: '' } }));
                        }}
-                       placeholder="How did the game of life go today?"
-                       className="w-full h-48 md:h-64 p-4 md:p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border-none outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm leading-relaxed"
+                       placeholder="How did the character evolve today? Any bugs fixed in the daily routine?"
+                       className="w-full h-48 md:h-80 p-5 md:p-7 bg-slate-50 dark:bg-slate-800/50 rounded-[1.5rem] border-none outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm leading-relaxed"
                      />
                   </div>
-                  <button className="w-full py-4 bg-indigo-600 text-white font-black rounded-xl shadow-lg active:scale-95 transition-all">SAVE ENTRY</button>
+                  <button className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl shadow-xl active:scale-95 transition-all uppercase tracking-widest text-xs">SAVE LOG ENTRY</button>
                </div>
             </div>
           )}
@@ -503,21 +511,21 @@ const App: React.FC = () => {
 
       {/* Bottom Nav (Mobile Only) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-slate-900 border-t dark:border-slate-800 flex items-center justify-around px-2 z-50">
-        <NavItem id="daily" label="Play" icon={Icons.Calendar} isActive={activeView === 'daily'} onClick={() => setActiveView('daily'} isBottomNav />
-        <NavItem id="habits" label="Matrix" icon={Icons.Check} isActive={activeView === 'habits'} onClick={() => setActiveView('habits'} isBottomNav />
+        <NavItem id="daily" label="Play" icon={Icons.Calendar} isActive={activeView === 'daily'} onClick={() => setActiveView('daily')} isBottomNav />
+        <NavItem id="habits" label="Matrix" icon={Icons.Check} isActive={activeView === 'habits'} onClick={() => setActiveView('habits')} isBottomNav />
         <div className="flex-1 flex justify-center -mt-8">
            <button 
               onClick={() => { setEditingTask(null); setIsTaskModalOpen(true); }}
-              className="w-12 h-12 bg-indigo-600 text-white rounded-2xl shadow-xl flex items-center justify-center active:scale-90 transition-all"
+              className="w-14 h-14 bg-indigo-600 text-white rounded-2xl shadow-xl flex items-center justify-center active:scale-90 transition-all border-4 border-slate-50 dark:border-slate-950"
            >
              <Icons.Plus />
            </button>
         </div>
-        <NavItem id="analytics" label="Stats" icon={Icons.Chart} isActive={activeView === 'analytics'} onClick={() => setActiveView('analytics'} isBottomNav />
-        <NavItem id="journal" label="Log" icon={Icons.Book} isActive={activeView === 'journal'} onClick={() => setActiveView('journal'} isBottomNav />
+        <NavItem id="analytics" label="Stats" icon={Icons.Chart} isActive={activeView === 'analytics'} onClick={() => setActiveView('analytics')} isBottomNav />
+        <NavItem id="journal" label="Log" icon={Icons.Book} isActive={activeView === 'journal'} onClick={() => setActiveView('journal')} isBottomNav />
       </nav>
 
-      {/* Desktop Quick Add FAB - Hidden on mobile as it's in bottom nav */}
+      {/* Desktop Quick Add FAB */}
       <button 
         onClick={() => { setEditingTask(null); setIsTaskModalOpen(true); }}
         className="hidden md:flex fixed bottom-10 right-10 w-16 h-16 bg-indigo-600 text-white rounded-3xl shadow-2xl items-center justify-center hover:scale-110 active:scale-90 transition-all z-50 group"
@@ -527,10 +535,10 @@ const App: React.FC = () => {
 
       {/* Task Creation Modal (Mobile Optimized) */}
       {isTaskModalOpen && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/40 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-4">
+        <div className="fixed inset-0 z-[100] bg-slate-950/40 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-slate-900 w-full max-w-xl p-6 md:p-10 rounded-t-[2.5rem] md:rounded-[3rem] shadow-2xl animate-in slide-in-from-bottom md:zoom-in-95 duration-300">
             <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto mb-6 md:hidden" />
-            <h2 className="text-2xl md:text-3xl font-black tracking-tighter mb-6 md:mb-8">INITIATE MISSION</h2>
+            <h2 className="text-2xl md:text-3xl font-black tracking-tighter mb-6 md:mb-8 uppercase">Initialize Mission</h2>
             <form onSubmit={e => {
               e.preventDefault();
               const f = new FormData(e.currentTarget);
@@ -543,30 +551,30 @@ const App: React.FC = () => {
               });
             }} className="space-y-4 md:space-y-6">
               <div className="space-y-1 md:space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Objective Label</label>
-                <input name="title" defaultValue={editingTask?.title} required className="w-full p-3 md:p-4 rounded-xl md:rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold border-none outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm" autoFocus />
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mission Label</label>
+                <input name="title" defaultValue={editingTask?.title} required className="w-full p-4 rounded-xl md:rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold border-none outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm" autoFocus />
               </div>
               <div className="grid grid-cols-2 gap-4 md:gap-6">
                 <div className="space-y-1 md:space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Time In</label>
-                  <input name="start" type="time" defaultValue={editingTask?.startTime || "09:00"} className="w-full p-3 md:p-4 rounded-xl md:rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold text-sm" />
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Launch Time</label>
+                  <input name="start" type="time" defaultValue={editingTask?.startTime || "09:00"} className="w-full p-4 rounded-xl md:rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold text-sm" />
                 </div>
                 <div className="space-y-1 md:space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Time Out</label>
-                  <input name="end" type="time" defaultValue={editingTask?.endTime || "10:00"} className="w-full p-3 md:p-4 rounded-xl md:rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold text-sm" />
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">End Time</label>
+                  <input name="end" type="time" defaultValue={editingTask?.endTime || "10:00"} className="w-full p-4 rounded-xl md:rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold text-sm" />
                 </div>
               </div>
               <div className="space-y-1 md:space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mission Weight</label>
-                <select name="priority" defaultValue={editingTask?.priority || Priority.MEDIUM} className="w-full p-3 md:p-4 rounded-xl md:rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold border-none outline-none text-sm">
-                  <option value={Priority.LOW}>Low Intensity (+5 XP)</option>
-                  <option value={Priority.MEDIUM}>Standard (+15 XP)</option>
-                  <option value={Priority.HIGH}>Critical Focus (+25 XP)</option>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mission Complexity</label>
+                <select name="priority" defaultValue={editingTask?.priority || Priority.MEDIUM} className="w-full p-4 rounded-xl md:rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold border-none outline-none text-sm appearance-none">
+                  <option value={Priority.LOW}>Side Quest (+5 XP)</option>
+                  <option value={Priority.MEDIUM}>Main Quest (+15 XP)</option>
+                  <option value={Priority.HIGH}>Critical Raid (+25 XP)</option>
                 </select>
               </div>
-              <div className="flex gap-3 md:gap-4 mt-6 md:mt-8 pb-6 md:pb-0">
-                <button type="button" onClick={() => setIsTaskModalOpen(false)} className="flex-1 py-3 md:py-4 font-black text-slate-500 hover:bg-slate-100 rounded-xl md:rounded-2xl transition-all text-sm">Abort</button>
-                <button type="submit" className="flex-[2] py-3 md:py-4 bg-indigo-600 text-white font-black rounded-xl md:rounded-2xl shadow-lg hover:bg-indigo-700 transition-all text-sm">Commit Mission</button>
+              <div className="flex gap-3 md:gap-4 mt-6 md:mt-8 pb-8 md:pb-0">
+                <button type="button" onClick={() => setIsTaskModalOpen(false)} className="flex-1 py-4 font-black text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl md:rounded-2xl transition-all text-xs uppercase tracking-widest">Abort</button>
+                <button type="submit" className="flex-[2] py-4 bg-indigo-600 text-white font-black rounded-xl md:rounded-2xl shadow-lg hover:bg-indigo-700 transition-all text-xs uppercase tracking-widest">Commit Mission</button>
               </div>
             </form>
           </div>
