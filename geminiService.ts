@@ -2,58 +2,49 @@
 import { GoogleGenAI } from "@google/genai";
 import { Task } from "./types";
 
-// Safe access to environment variables
-const getApiKey = () => {
-  try {
-    return (typeof process !== 'undefined' && process.env?.API_KEY) || '';
-  } catch (e) {
-    return '';
-  }
-};
-
-const ai = new GoogleGenAI({ apiKey: getApiKey() });
+// Standard initialization as per SDK guidelines
+// The API key is sourced from process.env.API_KEY which is handled by the platform
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const analyzeSchedule = async (tasks: Task[], date: string) => {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    return "AI Insights are unavailable. Please ensure your API key is configured in the environment.";
+  if (!process.env.API_KEY) {
+    return "The AI Coach is currently missing its credentials. Please ensure the API Key is correctly configured.";
   }
 
   const dayTasks = tasks.filter(t => t.date === date);
-  const taskSummary = dayTasks
-    .map(t => `- [${t.startTime}-${t.endTime}] ${t.title} (Priority: ${t.priority})`)
-    .join('\n');
+  const taskListString = dayTasks.length > 0 
+    ? dayTasks.map(t => `- [${t.startTime}-${t.endTime}] ${t.title} (Priority: ${t.priority})`).join('\n')
+    : "No tasks scheduled.";
 
-  const systemInstruction = `You are an expert productivity coach. Analyze the user's schedule and provide actionable, high-level feedback.
-Focus on:
-1. Burnout risks (too many high-priority tasks back-to-back).
-2. Schedule gaps where 'Deep Work' or recovery could happen.
-3. Logical inconsistencies (e.g., lunch breaks missing or overlapping times).
-Keep response under 150 words. Use a motivating yet realistic tone.`;
+  const systemInstruction = `You are "Zenith Coach," a world-class productivity expert. 
+Your goal is to analyze a user's daily schedule and provide high-impact, brief advice.
+1. Identify if the user is over-committed (more than 3 high-priority tasks).
+2. Spot gaps for "Deep Work" or mental recovery.
+3. Suggest one small optimization to improve the flow of their day.
+Keep the tone professional, encouraging, and concise (under 120 words).`;
 
   const prompt = `
-    Analyze my schedule for ${date}:
-    ${taskSummary || 'No tasks currently scheduled for this day.'}
+    Analysis Request for Date: ${date}
+    User Schedule:
+    ${taskListString}
 
-    Instructions:
-    - If empty, suggest 3 standard high-impact habits to start.
-    - If busy, identify the most critical hour of my day.
-    - Warn me if I have more than 3 high-priority tasks.
+    Please provide a strategic overview. If the schedule is empty, suggest 3 habits for a high-performance morning.
   `;
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: prompt,
       config: {
         systemInstruction,
-        temperature: 0.7,
-        topP: 0.9,
+        temperature: 0.8,
+        topP: 0.95,
       }
     });
-    return response.text;
+
+    return response.text || "I've reviewed your day and it looks solid. Keep up the momentum!";
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
-    return "The AI coach is currently offline. Please check your connection or try again later.";
+    return "I ran into an issue while analyzing your day. Let's try again in a moment.";
   }
 };

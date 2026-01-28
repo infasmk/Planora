@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Task, 
   Priority, 
@@ -196,6 +196,19 @@ const App: React.FC = () => {
     }));
   };
 
+  const fetchAiInsight = async () => {
+    setIsAiLoading(true);
+    setAiInsight(null);
+    try {
+      const res = await analyzeSchedule(tasks, selectedDate);
+      setAiInsight(res);
+    } catch (e) {
+      setAiInsight("Unable to connect to Zenith Coach. Check your network.");
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
   // --- Derived State ---
   const filteredTasks = useMemo(() => {
     return tasks
@@ -377,30 +390,34 @@ const App: React.FC = () => {
                   />
                 </div>
                 <button 
-                  onClick={async () => {
-                    setIsAiLoading(true);
-                    setAiInsight(null);
-                    const res = await analyzeSchedule(tasks, selectedDate);
-                    setAiInsight(res);
-                    setIsAiLoading(false);
-                  }}
+                  onClick={fetchAiInsight}
                   disabled={isAiLoading}
                   className={`p-3 rounded-2xl transition-all ${isAiLoading ? 'bg-indigo-100 dark:bg-indigo-900 animate-pulse' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100'}`}
-                  title="AI Insights"
+                  title="AI Coaching"
                 >
                   <Icons.Brain />
                 </button>
               </div>
             </header>
 
-            {aiInsight && (
+            {(aiInsight || isAiLoading) && (
               <div className="p-6 bg-gradient-to-br from-indigo-50 to-violet-50 dark:from-indigo-900/20 dark:to-violet-900/20 rounded-3xl border border-indigo-100 dark:border-indigo-800 shadow-sm relative overflow-hidden group">
-                <button onClick={() => setAiInsight(null)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">&times;</button>
+                {!isAiLoading && <button onClick={() => setAiInsight(null)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">&times;</button>}
                 <div className="flex items-start gap-4">
-                  <div className="p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-sm text-indigo-600"><Icons.Brain /></div>
-                  <div className="space-y-1">
-                    <h3 className="text-sm font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-widest">Zenith AI Analysis</h3>
-                    <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed whitespace-pre-line">{aiInsight}</p>
+                  <div className={`p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-sm text-indigo-600 ${isAiLoading ? 'animate-bounce' : ''}`}>
+                    <Icons.Brain />
+                  </div>
+                  <div className="space-y-1 flex-1">
+                    <h3 className="text-sm font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-widest">Zenith AI Coach</h3>
+                    {isAiLoading ? (
+                      <div className="space-y-2 mt-2">
+                        <div className="h-4 w-full animate-shimmer rounded-full"></div>
+                        <div className="h-4 w-[90%] animate-shimmer rounded-full"></div>
+                        <div className="h-4 w-[75%] animate-shimmer rounded-full"></div>
+                      </div>
+                    ) : (
+                      <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed whitespace-pre-line">{aiInsight}</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -537,9 +554,17 @@ const App: React.FC = () => {
 
         {activeTab === 'insights' && (
           <div className="max-w-6xl mx-auto space-y-12 animate-in fade-in duration-500">
-             <header>
-               <h2 className="text-4xl font-black tracking-tight mb-2">Insights Dashboard</h2>
-               <p className="text-slate-500 dark:text-slate-400 font-medium">Visualizing your performance across the last week.</p>
+             <header className="flex justify-between items-center">
+               <div className="space-y-1">
+                 <h2 className="text-4xl font-black tracking-tight mb-2">Insights Dashboard</h2>
+                 <p className="text-slate-500 dark:text-slate-400 font-medium">Visualizing your performance across the last week.</p>
+               </div>
+               <button 
+                  onClick={fetchAiInsight}
+                  className="px-6 py-3 bg-indigo-50 text-indigo-600 rounded-2xl font-black text-sm flex items-center gap-2 hover:bg-indigo-100 transition-all"
+               >
+                 <Icons.Brain /> Coach Review
+               </button>
              </header>
 
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -587,6 +612,7 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* ... (Habits and Reflections tabs remain as is) ... */}
         {activeTab === 'habits' && (
           <div className="max-w-6xl mx-auto space-y-12 animate-in fade-in duration-500">
              <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
