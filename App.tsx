@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Task, 
   Priority, 
@@ -7,13 +7,16 @@ import {
   Recurrence, 
   Reflection, 
   Habit,
-  UserStats
+  UserStats,
+  Toast,
+  ToastType
 } from './types';
 import { Icons, COLORS } from './constants';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   Cell, LineChart, Line, AreaChart, Area
 } from 'recharts';
+import { analyzeSchedule } from './geminiService';
 
 // --- Utilities ---
 const getTodayStr = () => new Date().toISOString().split('T')[0];
@@ -48,6 +51,29 @@ const NavItem: React.FC<NavItemProps> = ({ label, icon: Icon, isActive, onClick,
   </button>
 );
 
+const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: string) => void }> = ({ toast, onDismiss }) => {
+  useEffect(() => {
+    const timer = setTimeout(() => onDismiss(toast.id), 4000);
+    return () => clearTimeout(timer);
+  }, [toast.id, onDismiss]);
+
+  const typeStyles = {
+    success: 'bg-emerald-500 text-white',
+    error: 'bg-rose-500 text-white',
+    info: 'bg-indigo-600 text-white'
+  };
+
+  return (
+    <div className={`flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl animate-in slide-in-from-right duration-300 pointer-events-auto mb-3 ${typeStyles[toast.type]}`}>
+      {toast.type === 'success' && <Icons.Check />}
+      <p className="text-xs font-black uppercase tracking-widest">{toast.message}</p>
+      <button onClick={() => onDismiss(toast.id)} className="ml-4 opacity-50 hover:opacity-100">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   // --- Core State ---
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -59,7 +85,11 @@ const App: React.FC = () => {
 
   // --- UI State ---
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [isHabitModalOpen, setIsHabitModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [aiAdvice, setAiAdvice] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // --- Persistence ---
   useEffect(() => {
@@ -80,6 +110,29 @@ const App: React.FC = () => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [tasks, reflections, habits, theme]);
 
+  // --- Toast Handler ---
+  const showToast = useCallback((message: string, type: ToastType = 'info') => {
+    const id = generateId();
+    setToasts(prev => [...prev, { id, message, type }]);
+  }, []);
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  // --- AI Advice Integration ---
+  const fetchAdvice = async () => {
+    setIsAnalyzing(true);
+    try {
+      const advice = await analyzeSchedule(tasks, selectedDate);
+      setAiAdvice(advice);
+    } catch (err) {
+      showToast("Zenith Coach link failure", "error");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   // --- Gamification Logic ---
   const stats = useMemo((): UserStats => {
     const completedTasks = tasks.filter(t => t.status === Status.COMPLETED).length;
@@ -88,7 +141,6 @@ const App: React.FC = () => {
     const xp = (completedTasks * 25) + (completedHabits * 10);
     const level = Math.floor(xp / 250) + 1;
     
-    // Life Score (Last 7 days consistency)
     const last7Days = Array.from({ length: 7 }).map((_, i) => {
       const d = new Date();
       d.setDate(d.getDate() - i);
@@ -121,6 +173,7 @@ const App: React.FC = () => {
   const handleSaveTask = (taskData: Partial<Task>) => {
     if (editingTask?.id) {
       setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...taskData } : t));
+      showToast("Mission parameters updated", "success");
     } else {
       setTasks(prev => [...prev, {
         id: generateId(),
@@ -133,16 +186,33 @@ const App: React.FC = () => {
         date: selectedDate,
         recurrence: taskData.recurrence || Recurrence.NONE,
       } as Task]);
+      showToast("New mission initialized", "success");
     }
     setIsTaskModalOpen(false);
     setEditingTask(null);
   };
 
+  const handleAddHabit = (name: string, icon: string, category: string) => {
+    setHabits(prev => [...prev, { 
+      id: generateId(), 
+      name, 
+      icon, 
+      category, 
+      history: {}, 
+      createdAt: getTodayStr() 
+    }]);
+    setIsHabitModalOpen(false);
+    showToast("Character trait defined", "success");
+  };
+
   const toggleHabit = (id: string, date: string) => {
+    const habit = habits.find(h => h.id === id);
+    const newStatus = !habit?.history[date];
     setHabits(prev => prev.map(h => h.id === id ? {
       ...h,
-      history: { ...h.history, [date]: !h.history[date] }
+      history: { ...h.history, [date]: newStatus }
     } : h));
+    if (newStatus) showToast(`Trait "${habit?.name}" maintained`, "success");
   };
 
   const filteredTasks = useMemo(() => {
@@ -161,6 +231,13 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col md:flex-row h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden font-sans">
       
+      {/* Toast Container */}
+      <div className="fixed top-6 right-6 z-[200] flex flex-col items-end pointer-events-none w-full max-w-xs sm:max-w-sm">
+        {toasts.map(toast => (
+          <ToastItem key={toast.id} toast={toast} onDismiss={dismissToast} />
+        ))}
+      </div>
+
       {/* Sidebar Nav (Desktop) */}
       <aside className="hidden md:flex w-64 border-r dark:border-slate-800 bg-white dark:bg-slate-900 flex-col p-6 space-y-8">
         <div className="flex items-center gap-3 px-2">
@@ -176,7 +253,13 @@ const App: React.FC = () => {
         </div>
 
         <div className="pt-6 border-t dark:border-slate-800 space-y-4">
-          <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800">
+          <button 
+            onClick={() => {
+              setTheme(theme === 'light' ? 'dark' : 'light');
+              showToast(`${theme === 'light' ? 'Dark' : 'Light'} mode active`, 'info');
+            }} 
+            className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
+          >
             {theme === 'light' ? <Icons.Moon /> : <Icons.Sun />}
             <span className="text-sm font-medium">Appearance</span>
           </button>
@@ -198,10 +281,6 @@ const App: React.FC = () => {
                 />
               </div>
             </div>
-            <div className="hidden sm:flex items-center gap-2">
-              <span className="text-[10px] font-black text-slate-400 uppercase">XP</span>
-              <span className="text-xs md:text-sm font-bold tabular-nums">{stats.xp}</span>
-            </div>
           </div>
 
           <div className="flex items-center gap-4 md:gap-8">
@@ -222,9 +301,36 @@ const App: React.FC = () => {
           {activeView === 'daily' && (
             <div className="max-w-5xl mx-auto flex flex-col gap-6 md:gap-8 animate-in fade-in duration-500">
               
+              {/* Zenith Coach AI Card */}
+              {filteredTasks.length > 0 && (
+                <div className="bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/50 rounded-[2.5rem] p-6 md:p-8 relative overflow-hidden">
+                   <div className="flex items-start justify-between gap-4 relative z-10">
+                      <div className="flex-1">
+                         <h3 className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-3">Zenith Intelligence</h3>
+                         {isAnalyzing ? (
+                           <div className="animate-pulse space-y-2">
+                             <div className="h-3 bg-indigo-200 dark:bg-indigo-800/50 rounded w-3/4" />
+                             <div className="h-3 bg-indigo-200 dark:bg-indigo-800/50 rounded w-1/2" />
+                           </div>
+                         ) : aiAdvice ? (
+                           <p className="text-sm font-medium text-slate-700 dark:text-slate-300 leading-relaxed italic">"{aiAdvice}"</p>
+                         ) : (
+                           <p className="text-sm font-medium text-slate-500 italic">Ready to optimize your flow.</p>
+                         )}
+                      </div>
+                      <button 
+                        onClick={fetchAdvice}
+                        disabled={isAnalyzing}
+                        className="p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-sm hover:shadow-md transition-all active:scale-95 text-indigo-600"
+                      >
+                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
+                      </button>
+                   </div>
+                   <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -mr-16 -mt-16" />
+                </div>
+              )}
+
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
-                
-                {/* Left Col (Desktop) / Top Banner (Mobile) */}
                 <div className="col-span-12 lg:col-span-4 flex flex-col gap-6 order-2 lg:order-1">
                   <section className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border dark:border-slate-800 shadow-sm">
                     <h3 className="text-xs font-black uppercase tracking-widest mb-4 flex items-center justify-between text-slate-400">
@@ -235,7 +341,7 @@ const App: React.FC = () => {
                       {habits.length === 0 && (
                         <div className="py-6 text-center border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-2xl">
                            <p className="text-[10px] text-slate-400 font-medium">No habits initialized</p>
-                           <button onClick={() => setActiveView('habits')} className="mt-1 text-[10px] font-bold text-indigo-500">+ Setup character traits</button>
+                           <button onClick={() => setIsHabitModalOpen(true)} className="mt-1 text-[10px] font-bold text-indigo-500">+ Setup character traits</button>
                         </div>
                       )}
                       {habits.map(habit => (
@@ -274,11 +380,9 @@ const App: React.FC = () => {
                          <div className="h-full bg-white rounded-full transition-all duration-1000" style={{ width: `${dayCompletion}%` }} />
                        </div>
                      </div>
-                     <div className="absolute -right-4 -bottom-4 w-24 md:w-32 h-24 md:h-32 bg-white/10 rounded-full blur-3xl group-hover:scale-150 transition-transform" />
                   </div>
                 </div>
 
-                {/* Right Col (Desktop) / Main Planner (Mobile) */}
                 <div className="col-span-12 lg:col-span-8 flex flex-col gap-6 order-1 lg:order-2">
                   <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border dark:border-slate-800 shadow-sm overflow-hidden flex flex-col">
                     <header className="p-4 md:p-6 border-b dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
@@ -336,7 +440,9 @@ const App: React.FC = () => {
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: t.status === Status.COMPLETED ? Status.PENDING : Status.COMPLETED } : t));
+                                const isNowDone = task.status !== Status.COMPLETED;
+                                setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: isNowDone ? Status.COMPLETED : Status.PENDING } : t));
+                                showToast(isNowDone ? "Mission accomplishment recorded" : "Mission status reverted", isNowDone ? "success" : "info");
                               }}
                               className={`w-9 h-9 md:w-11 md:h-11 rounded-xl md:rounded-2xl flex items-center justify-center transition-all active:scale-90 ${
                                 task.status === Status.COMPLETED 
@@ -364,17 +470,7 @@ const App: React.FC = () => {
                      <p className="text-xs md:text-sm text-slate-500 font-medium">Character consistency over the last 7 cycles.</p>
                    </div>
                    <button 
-                    onClick={() => {
-                      const name = prompt("Trait Name:");
-                      if (name) setHabits(prev => [...prev, { 
-                        id: generateId(), 
-                        name, 
-                        icon: '⚡', 
-                        category: 'Skill', 
-                        history: {}, 
-                        createdAt: getTodayStr() 
-                      }]);
-                    }}
+                    onClick={() => setIsHabitModalOpen(true)}
                     className="w-full md:w-auto px-6 py-4 bg-indigo-600 text-white text-xs md:text-sm font-black rounded-2xl shadow-xl active:scale-95 transition-all"
                    >
                      + DEFINE NEW TRAIT
@@ -436,7 +532,6 @@ const App: React.FC = () => {
                       </table>
                    </div>
                 </div>
-                <p className="text-center text-[10px] text-slate-400 font-black uppercase tracking-widest opacity-50">Swipe matrix horizontally to view log history</p>
              </div>
           )}
 
@@ -470,18 +565,6 @@ const App: React.FC = () => {
                      </ResponsiveContainer>
                   </div>
                </div>
-
-               <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border dark:border-slate-800 shadow-sm">
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-6">Achievement Badges</h3>
-                  <div className="flex flex-wrap gap-4">
-                     {['First Mission', 'Level 5 reached', '7-Day Streak', 'Perfect Matrix'].map((badge, idx) => (
-                       <div key={idx} className="px-5 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center gap-3">
-                         <span className="text-xl">🏆</span>
-                         <span className="text-xs font-bold">{badge}</span>
-                       </div>
-                     ))}
-                  </div>
-               </div>
             </div>
           )}
 
@@ -501,7 +584,12 @@ const App: React.FC = () => {
                        className="w-full h-48 md:h-80 p-5 md:p-7 bg-slate-50 dark:bg-slate-800/50 rounded-[1.5rem] border-none outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm leading-relaxed"
                      />
                   </div>
-                  <button className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl shadow-xl active:scale-95 transition-all uppercase tracking-widest text-xs">SAVE LOG ENTRY</button>
+                  <button 
+                    onClick={() => showToast("Manifest entry synchronized", "success")}
+                    className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl shadow-xl active:scale-95 transition-all uppercase tracking-widest text-xs"
+                  >
+                    SAVE LOG ENTRY
+                  </button>
                </div>
             </div>
           )}
@@ -533,12 +621,64 @@ const App: React.FC = () => {
         <Icons.Plus />
       </button>
 
-      {/* Task Creation Modal (Mobile Optimized) */}
+      {/* Habit Creation Modal */}
+      {isHabitModalOpen && (
+        <div className="fixed inset-0 z-[110] bg-slate-950/40 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-4 animate-in fade-in duration-200">
+           <div className="bg-white dark:bg-slate-900 w-full max-w-md p-6 md:p-10 rounded-t-[2.5rem] md:rounded-[3rem] shadow-2xl animate-in slide-in-from-bottom md:zoom-in-95 duration-300">
+              <h2 className="text-2xl font-black tracking-tighter mb-6 uppercase">New Trait Definition</h2>
+              <form onSubmit={e => {
+                e.preventDefault();
+                const f = new FormData(e.currentTarget);
+                handleAddHabit(f.get('name') as string, f.get('icon') as string, f.get('category') as string);
+              }} className="space-y-4">
+                <div className="space-y-1">
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Trait Name</label>
+                   <input name="name" required placeholder="e.g. Morning Meditation" className="w-full p-4 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold border-none outline-none focus:ring-2 focus:ring-indigo-500 text-sm" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Symbol</label>
+                    <input name="icon" defaultValue="⚡" className="w-full p-4 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold text-sm text-center" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Type</label>
+                    <select name="category" className="w-full p-4 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold text-sm outline-none appearance-none">
+                       <option>Skill</option>
+                       <option>Body</option>
+                       <option>Mind</option>
+                       <option>Social</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex gap-4 pt-4">
+                   <button type="button" onClick={() => setIsHabitModalOpen(false)} className="flex-1 py-4 font-black text-slate-400 text-xs uppercase">Abort</button>
+                   <button type="submit" className="flex-[2] py-4 bg-indigo-600 text-white font-black rounded-xl text-xs uppercase shadow-lg">Define Trait</button>
+                </div>
+              </form>
+           </div>
+        </div>
+      )}
+
+      {/* Task Creation Modal */}
       {isTaskModalOpen && (
         <div className="fixed inset-0 z-[100] bg-slate-950/40 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-slate-900 w-full max-w-xl p-6 md:p-10 rounded-t-[2.5rem] md:rounded-[3rem] shadow-2xl animate-in slide-in-from-bottom md:zoom-in-95 duration-300">
             <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto mb-6 md:hidden" />
-            <h2 className="text-2xl md:text-3xl font-black tracking-tighter mb-6 md:mb-8 uppercase">Initialize Mission</h2>
+            <div className="flex items-center justify-between mb-6 md:mb-8">
+               <h2 className="text-2xl md:text-3xl font-black tracking-tighter uppercase">Initialize Mission</h2>
+               {editingTask && (
+                 <button 
+                  onClick={() => {
+                    setTasks(prev => prev.filter(t => t.id !== editingTask.id));
+                    setIsTaskModalOpen(false);
+                    showToast("Mission aborted and purged", "error");
+                  }}
+                  className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-all"
+                 >
+                   <Icons.Trash />
+                 </button>
+               )}
+            </div>
             <form onSubmit={e => {
               e.preventDefault();
               const f = new FormData(e.currentTarget);
@@ -573,7 +713,7 @@ const App: React.FC = () => {
                 </select>
               </div>
               <div className="flex gap-3 md:gap-4 mt-6 md:mt-8 pb-8 md:pb-0">
-                <button type="button" onClick={() => setIsTaskModalOpen(false)} className="flex-1 py-4 font-black text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl md:rounded-2xl transition-all text-xs uppercase tracking-widest">Abort</button>
+                <button type="button" onClick={() => setIsTaskModalOpen(false)} className="flex-1 py-4 font-black text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl md:rounded-2xl transition-all text-xs uppercase tracking-widest">Close</button>
                 <button type="submit" className="flex-[2] py-4 bg-indigo-600 text-white font-black rounded-xl md:rounded-2xl shadow-lg hover:bg-indigo-700 transition-all text-xs uppercase tracking-widest">Commit Mission</button>
               </div>
             </form>
