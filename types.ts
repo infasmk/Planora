@@ -28,8 +28,6 @@ export interface Task {
   isAllDay: boolean;
   date: string; // YYYY-MM-DD
   recurrence: Recurrence;
-  actualEndTime?: string;
-  estimatedMinutes?: number;
 }
 
 export interface Reflection {
@@ -42,8 +40,17 @@ export interface Reflection {
 export interface Habit {
   id: string;
   name: string;
+  icon: string;
   history: Record<string, boolean>; // date string -> completed
   createdAt: string;
+  category: string;
+}
+
+export interface UserStats {
+  xp: number;
+  level: number;
+  streak: number;
+  lifeScore: number;
 }
 
 export interface AppState {
@@ -51,4 +58,5 @@ export interface AppState {
   reflections: Record<string, Reflection>;
   habits: Habit[];
   theme: 'light' | 'dark';
+  stats: UserStats;
 }
