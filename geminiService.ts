@@ -1,14 +1,21 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { Task } from "./types";
 
-// Standard initialization as per SDK guidelines
-// The API key is sourced from process.env.API_KEY which is handled by the platform
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Ensure process.env exists before accessing it to prevent initialization crashes
+const getApiKey = () => {
+  try {
+    return (process.env?.API_KEY) || "";
+  } catch {
+    return "";
+  }
+};
+
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 export const analyzeSchedule = async (tasks: Task[], date: string) => {
-  if (!process.env.API_KEY) {
-    return "The AI Coach is currently missing its credentials. Please ensure the API Key is correctly configured.";
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    return "The Zenith AI Coach is currently offline (API key not detected). Please verify your environment configuration.";
   }
 
   const dayTasks = tasks.filter(t => t.date === date);
@@ -33,7 +40,7 @@ Keep the tone professional, encouraging, and concise (under 120 words).`;
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
         systemInstruction,
