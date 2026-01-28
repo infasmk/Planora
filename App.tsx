@@ -80,12 +80,13 @@ const App: React.FC = () => {
   const [reflections, setReflections] = useState<Record<string, Reflection>>({});
   const [habits, setHabits] = useState<Habit[]>([]);
   const [selectedDate, setSelectedDate] = useState(getTodayStr());
-  const [activeView, setActiveView] = useState<'daily' | 'habits' | 'analytics' | 'journal'>('daily');
+  const [activeView, setActiveView] = useState<'daily' | 'habits' | 'analytics' | 'journal' | 'settings'>('daily');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
   // --- UI State ---
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isHabitModalOpen, setIsHabitModalOpen] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; desc: string; onConfirm: () => void } | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [aiAdvice, setAiAdvice] = useState<string | null>(null);
@@ -119,6 +120,34 @@ const App: React.FC = () => {
   const dismissToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
+
+  // --- Data Management Actions ---
+  const handleExport = () => {
+    const data = { tasks, habits, reflections, stats };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `zenith_backup_${getTodayStr()}.json`;
+    a.click();
+    showToast("Manifest backup complete", "success");
+  };
+
+  const handleClearData = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: "EXTINGUISH MANIFEST?",
+      desc: "This will permanently purge all missions, traits, and progress. Your character will be erased from the void.",
+      onConfirm: () => {
+        setTasks([]);
+        setHabits([]);
+        setReflections({});
+        localStorage.removeItem('zenith_life_game');
+        showToast("System purged. Fresh cycle initiated.", "error");
+        setConfirmModal(null);
+      }
+    });
+  };
 
   // --- AI Advice Integration ---
   const fetchAdvice = async () => {
@@ -169,11 +198,22 @@ const App: React.FC = () => {
     return (relativeXP / 250) * 100;
   }, [stats]);
 
+  // --- Achievements Logic ---
+  const achievements = useMemo(() => {
+    const list = [
+      { id: '1', title: 'Pioneer', desc: 'Complete your first mission', unlocked: tasks.some(t => t.status === Status.COMPLETED), icon: '🚀' },
+      { id: '2', title: 'Consistent', desc: 'Reach 50% Life Score', unlocked: stats.lifeScore >= 50, icon: '🛡️' },
+      { id: '3', title: 'Grandmaster', desc: 'Reach Character Level 5', unlocked: stats.level >= 5, icon: '🏆' },
+      { id: '4', title: 'Deep Log', desc: 'Write 3 journal entries', unlocked: Object.keys(reflections).length >= 3, icon: '📜' },
+    ];
+    return list;
+  }, [tasks, stats, reflections]);
+
   // --- Actions ---
   const handleSaveTask = (taskData: Partial<Task>) => {
     if (editingTask?.id) {
       setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...taskData } : t));
-      showToast("Mission parameters updated", "success");
+      showToast("Mission parameters recalibrated", "success");
     } else {
       setTasks(prev => [...prev, {
         id: generateId(),
@@ -186,7 +226,7 @@ const App: React.FC = () => {
         date: selectedDate,
         recurrence: taskData.recurrence || Recurrence.NONE,
       } as Task]);
-      showToast("New mission initialized", "success");
+      showToast("Objective synthesized into flow", "success");
     }
     setIsTaskModalOpen(false);
     setEditingTask(null);
@@ -202,7 +242,7 @@ const App: React.FC = () => {
       createdAt: getTodayStr() 
     }]);
     setIsHabitModalOpen(false);
-    showToast("Character trait defined", "success");
+    showToast(`Trait "${name}" integrated`, "success");
   };
 
   const toggleHabit = (id: string, date: string) => {
@@ -212,7 +252,7 @@ const App: React.FC = () => {
       ...h,
       history: { ...h.history, [date]: newStatus }
     } : h));
-    if (newStatus) showToast(`Trait "${habit?.name}" maintained`, "success");
+    if (newStatus) showToast(`Trait verified: ${habit?.name}`, "success");
   };
 
   const filteredTasks = useMemo(() => {
@@ -231,7 +271,7 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col md:flex-row h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden font-sans">
       
-      {/* Toast Container */}
+      {/* Custom Toast System */}
       <div className="fixed top-6 right-6 z-[200] flex flex-col items-end pointer-events-none w-full max-w-xs sm:max-w-sm">
         {toasts.map(toast => (
           <ToastItem key={toast.id} toast={toast} onDismiss={dismissToast} />
@@ -249,34 +289,29 @@ const App: React.FC = () => {
           <NavItem id="daily" label="Planner" icon={Icons.Calendar} isActive={activeView === 'daily'} onClick={() => setActiveView('daily')} />
           <NavItem id="habits" label="Matrix" icon={Icons.Check} isActive={activeView === 'habits'} onClick={() => setActiveView('habits')} />
           <NavItem id="analytics" label="Stats" icon={Icons.Chart} isActive={activeView === 'analytics'} onClick={() => setActiveView('analytics')} />
-          <NavItem id="journal" label="Journal" icon={Icons.Book} isActive={activeView === 'journal'} onClick={() => setActiveView('journal')} />
+          <NavItem id="journal" label="Log" icon={Icons.Book} isActive={activeView === 'journal'} onClick={() => setActiveView('journal')} />
+          <NavItem id="settings" label="Settings" icon={Icons.Settings} isActive={activeView === 'settings'} onClick={() => setActiveView('settings')} />
         </div>
 
         <div className="pt-6 border-t dark:border-slate-800 space-y-4">
-          <button 
-            onClick={() => {
-              setTheme(theme === 'light' ? 'dark' : 'light');
-              showToast(`${theme === 'light' ? 'Dark' : 'Light'} mode active`, 'info');
-            }} 
-            className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
-          >
-            {theme === 'light' ? <Icons.Moon /> : <Icons.Sun />}
-            <span className="text-sm font-medium">Appearance</span>
-          </button>
+          <div className="px-4">
+             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Character Info</p>
+             <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400">Level {stats.level} Initiate</p>
+          </div>
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-w-0 pb-16 md:pb-0 overflow-hidden">
+      <main className="flex-1 flex flex-col min-w-0 pb-16 md:pb-0 overflow-hidden relative">
         
         {/* Top Gamification Bar */}
-        <header className="h-16 md:h-20 border-b dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-4 md:px-8 flex items-center justify-between z-10">
+        <header className="h-16 md:h-20 border-b dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-4 md:px-8 flex items-center justify-between z-40 sticky top-0">
           <div className="flex items-center gap-3 md:gap-6 flex-1">
             <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-3">
-              <span className="text-[10px] md:text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest leading-none">Character Lv. {stats.level}</span>
-              <div className="w-24 md:w-48 h-1.5 md:h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
+              <span className="text-[10px] md:text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest leading-none">Lv. {stats.level} PROGRESS</span>
+              <div className="w-32 md:w-64 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner border dark:border-slate-700">
                 <div 
-                  className="h-full bg-indigo-500 shadow-[0_0_8px_rgba(79,70,229,0.5)] transition-all duration-700 ease-out" 
+                  className="h-full bg-indigo-500 shadow-[0_0_12px_rgba(79,70,229,0.5)] transition-all duration-700 ease-out" 
                   style={{ width: `${xpProgress}%` }}
                 />
               </div>
@@ -285,13 +320,12 @@ const App: React.FC = () => {
 
           <div className="flex items-center gap-4 md:gap-8">
             <div className="text-right">
-              <p className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Life Score</p>
+              <p className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Efficiency</p>
               <p className="text-sm md:text-lg font-black text-indigo-600 dark:text-indigo-400">{stats.lifeScore}%</p>
             </div>
-            <div className="hidden md:block w-px h-8 bg-slate-200 dark:bg-slate-800" />
-            <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-slate-100 dark:bg-slate-800 border-2 border-white dark:border-slate-700 shadow-sm overflow-hidden flex items-center justify-center text-sm">
-               👤
-            </div>
+            <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 transition-all border dark:border-slate-700">
+              {theme === 'light' ? <Icons.Moon /> : <Icons.Sun />}
+            </button>
           </div>
         </header>
 
@@ -303,66 +337,70 @@ const App: React.FC = () => {
               
               {/* Zenith Coach AI Card */}
               {filteredTasks.length > 0 && (
-                <div className="bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/50 rounded-[2.5rem] p-6 md:p-8 relative overflow-hidden">
+                <div className="bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/50 rounded-[2.5rem] p-6 md:p-8 relative overflow-hidden group">
                    <div className="flex items-start justify-between gap-4 relative z-10">
                       <div className="flex-1">
-                         <h3 className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-3">Zenith Intelligence</h3>
+                         <h3 className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                           Zenith AI Coach
+                           {isAnalyzing && <div className="w-1 h-1 bg-indigo-500 rounded-full animate-ping" />}
+                         </h3>
                          {isAnalyzing ? (
                            <div className="animate-pulse space-y-2">
-                             <div className="h-3 bg-indigo-200 dark:bg-indigo-800/50 rounded w-3/4" />
-                             <div className="h-3 bg-indigo-200 dark:bg-indigo-800/50 rounded w-1/2" />
+                             <div className="h-3 bg-indigo-200 dark:bg-indigo-800/50 rounded w-full" />
+                             <div className="h-3 bg-indigo-200 dark:bg-indigo-800/50 rounded w-2/3" />
                            </div>
                          ) : aiAdvice ? (
                            <p className="text-sm font-medium text-slate-700 dark:text-slate-300 leading-relaxed italic">"{aiAdvice}"</p>
                          ) : (
-                           <p className="text-sm font-medium text-slate-500 italic">Ready to optimize your flow.</p>
+                           <p className="text-sm font-medium text-slate-500 italic">Ready to optimize your character flow for this cycle.</p>
                          )}
                       </div>
                       <button 
                         onClick={fetchAdvice}
                         disabled={isAnalyzing}
-                        className="p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-sm hover:shadow-md transition-all active:scale-95 text-indigo-600"
+                        className="p-3.5 bg-white dark:bg-slate-800 rounded-2xl shadow-sm hover:shadow-xl transition-all active:scale-90 text-indigo-600 border dark:border-slate-700"
                       >
-                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
+                         <Icons.Award />
                       </button>
                    </div>
-                   <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -mr-16 -mt-16" />
+                   <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/5 rounded-full blur-[64px] -mr-20 -mt-20 group-hover:bg-indigo-500/10 transition-colors" />
                 </div>
               )}
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
+                {/* Side Grid - Habits */}
                 <div className="col-span-12 lg:col-span-4 flex flex-col gap-6 order-2 lg:order-1">
                   <section className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border dark:border-slate-800 shadow-sm">
-                    <h3 className="text-xs font-black uppercase tracking-widest mb-4 flex items-center justify-between text-slate-400">
-                      Habit Check-in
-                      <span className="text-indigo-500">{habits.filter(h => h.history[selectedDate]).length}/{habits.length}</span>
+                    <h3 className="text-[10px] font-black uppercase tracking-widest mb-5 flex items-center justify-between text-slate-400">
+                      Traits Applied
+                      <span className="text-indigo-500 font-black">{habits.filter(h => h.history[selectedDate]).length}/{habits.length}</span>
                     </h3>
-                    <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-2.5">
                       {habits.length === 0 && (
-                        <div className="py-6 text-center border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-2xl">
-                           <p className="text-[10px] text-slate-400 font-medium">No habits initialized</p>
-                           <button onClick={() => setIsHabitModalOpen(true)} className="mt-1 text-[10px] font-bold text-indigo-500">+ Setup character traits</button>
+                        <div className="py-10 text-center border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-3xl">
+                           <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">No traits defined</p>
+                           <button onClick={() => setIsHabitModalOpen(true)} className="mt-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 text-[10px] font-black rounded-lg hover:bg-indigo-100 transition-all uppercase tracking-widest">+ Initialize</button>
                         </div>
                       )}
                       {habits.map(habit => (
                         <div 
                           key={habit.id} 
                           onClick={() => toggleHabit(habit.id, selectedDate)}
-                          className={`p-3 md:p-4 rounded-xl md:rounded-2xl border transition-all cursor-pointer flex items-center justify-between group active:scale-95 ${
+                          className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between group active:scale-[0.97] ${
                             habit.history[selectedDate] 
                               ? 'bg-emerald-50 border-emerald-100 dark:bg-emerald-900/10 dark:border-emerald-800/50' 
                               : 'bg-slate-50 border-slate-100 dark:bg-slate-800/50 dark:border-slate-800'
                           }`}
                         >
                           <div className="flex items-center gap-3">
-                            <span className="text-lg md:text-xl">{habit.icon}</span>
-                            <span className={`text-xs md:text-sm font-bold ${habit.history[selectedDate] ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>
+                            <span className="text-xl group-hover:scale-125 transition-transform">{habit.icon}</span>
+                            <span className={`text-sm font-black tracking-tight ${habit.history[selectedDate] ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>
                               {habit.name}
                             </span>
                           </div>
-                          <div className={`w-5 h-5 md:w-6 md:h-6 rounded-full border-2 flex items-center justify-center transition-all ${
+                          <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
                             habit.history[selectedDate] 
-                              ? 'bg-emerald-500 border-emerald-500 text-white' 
+                              ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-200 dark:shadow-none' 
                               : 'border-slate-200 dark:border-slate-700'
                           }`}>
                             {habit.history[selectedDate] && <Icons.Check />}
@@ -371,25 +409,16 @@ const App: React.FC = () => {
                       ))}
                     </div>
                   </section>
-
-                  <div className="bg-indigo-600 rounded-[2rem] p-6 md:p-8 text-white relative overflow-hidden group shadow-xl shadow-indigo-100 dark:shadow-none">
-                     <div className="relative z-10">
-                       <p className="text-[10px] font-black uppercase opacity-70 tracking-widest">Efficiency Rating</p>
-                       <p className="text-4xl md:text-5xl font-black mt-1 md:mt-2">{dayCompletion}%</p>
-                       <div className="mt-4 md:mt-8 h-1.5 md:h-2 w-full bg-white/20 rounded-full">
-                         <div className="h-full bg-white rounded-full transition-all duration-1000" style={{ width: `${dayCompletion}%` }} />
-                       </div>
-                     </div>
-                  </div>
                 </div>
 
+                {/* Main Grid - Planner */}
                 <div className="col-span-12 lg:col-span-8 flex flex-col gap-6 order-1 lg:order-2">
                   <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border dark:border-slate-800 shadow-sm overflow-hidden flex flex-col">
-                    <header className="p-4 md:p-6 border-b dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
-                      <div className="flex items-center gap-2 md:gap-4 overflow-x-auto no-scrollbar">
+                    <header className="p-5 md:p-7 border-b dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex items-center gap-3 md:gap-4 overflow-x-auto no-scrollbar">
                         <button 
                           onClick={() => setSelectedDate(getTodayStr())}
-                          className={`text-xs md:text-sm font-black tracking-tighter whitespace-nowrap transition-all px-4 py-2 rounded-full ${selectedDate === getTodayStr() ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                          className={`text-xs font-black tracking-widest uppercase transition-all px-4 py-2.5 rounded-xl ${selectedDate === getTodayStr() ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100 dark:shadow-none' : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                         >
                           Today
                         </button>
@@ -397,24 +426,24 @@ const App: React.FC = () => {
                           type="date" 
                           value={selectedDate} 
                           onChange={e => setSelectedDate(e.target.value)}
-                          className="text-[10px] md:text-xs font-bold px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-full border-none focus:ring-2 focus:ring-indigo-500 outline-none"
+                          className="text-[10px] md:text-xs font-black px-4 py-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl border dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none uppercase tracking-widest"
                         />
                       </div>
                       <button 
                         onClick={() => { setEditingTask(null); setIsTaskModalOpen(true); }}
-                        className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] md:text-xs font-black rounded-xl transition-all shadow-md active:scale-95"
+                        className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl transition-all shadow-xl shadow-indigo-50 dark:shadow-none uppercase tracking-widest active:scale-95"
                       >
-                        + NEW MISSION
+                        + INITIATE MISSION
                       </button>
                     </header>
 
-                    <div className="divide-y dark:divide-slate-800 flex-1 overflow-y-auto min-h-[300px] max-h-[500px] no-scrollbar">
+                    <div className="divide-y dark:divide-slate-800 flex-1 overflow-y-auto min-h-[400px] max-h-[600px] no-scrollbar">
                       {filteredTasks.length === 0 && (
-                        <div className="py-20 text-center text-slate-300">
-                           <div className="w-14 h-14 bg-slate-50 dark:bg-slate-800/50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-100 dark:border-slate-800">
+                        <div className="py-24 text-center text-slate-300">
+                           <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800/50 rounded-3xl flex items-center justify-center mx-auto mb-6 border dark:border-slate-700 shadow-inner">
                              <Icons.Calendar />
                            </div>
-                           <p className="text-xs font-medium uppercase tracking-widest text-slate-400">Idle cycle. Add a quest.</p>
+                           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Zero missions assigned for this timestamp</p>
                         </div>
                       )}
                       {filteredTasks.map(task => (
@@ -423,17 +452,19 @@ const App: React.FC = () => {
                           onClick={() => { setEditingTask(task); setIsTaskModalOpen(true); }}
                           className="group flex hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer active:bg-slate-100 dark:active:bg-slate-800"
                         >
-                          <div className="w-16 md:w-20 p-4 md:p-6 flex flex-col items-center border-r dark:border-slate-800">
-                            <span className="text-[9px] md:text-[10px] font-black text-slate-400">{task.startTime}</span>
+                          <div className="w-20 md:w-24 p-6 flex flex-col items-center border-r dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20">
+                            <span className="text-[10px] font-black text-slate-400 tracking-tighter tabular-nums">{task.startTime}</span>
+                            <div className="h-full w-px bg-slate-100 dark:bg-slate-800 my-2" />
+                            <span className="text-[10px] font-black text-slate-400/50 tracking-tighter tabular-nums">{task.endTime}</span>
                           </div>
-                          <div className="flex-1 p-4 md:p-6 flex items-center justify-between">
-                            <div className="space-y-1">
-                              <h4 className={`text-xs md:text-sm font-black transition-all ${task.status === Status.COMPLETED ? 'line-through opacity-40' : ''}`}>
+                          <div className="flex-1 p-6 flex items-center justify-between gap-6">
+                            <div className="space-y-1.5 flex-1 min-w-0">
+                              <h4 className={`text-sm font-black truncate transition-all ${task.status === Status.COMPLETED ? 'line-through opacity-40 blur-[0.3px]' : ''}`}>
                                 {task.title}
                               </h4>
                               <div className="flex items-center gap-2">
-                                 <span className={`text-[8px] md:text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${COLORS.priority[task.priority]}`}>
-                                   {task.priority}
+                                 <span className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md border ${COLORS.priority[task.priority]}`}>
+                                   {task.priority} MISSION
                                  </span>
                               </div>
                             </div>
@@ -442,12 +473,12 @@ const App: React.FC = () => {
                                 e.stopPropagation();
                                 const isNowDone = task.status !== Status.COMPLETED;
                                 setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: isNowDone ? Status.COMPLETED : Status.PENDING } : t));
-                                showToast(isNowDone ? "Mission accomplishment recorded" : "Mission status reverted", isNowDone ? "success" : "info");
+                                showToast(isNowDone ? "Mission accomplishment recorded" : "Objective reverted to pending", isNowDone ? "success" : "info");
                               }}
-                              className={`w-9 h-9 md:w-11 md:h-11 rounded-xl md:rounded-2xl flex items-center justify-center transition-all active:scale-90 ${
+                              className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center transition-all active:scale-90 ${
                                 task.status === Status.COMPLETED 
-                                  ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' 
-                                  : 'bg-slate-50 dark:bg-slate-800 text-slate-300'
+                                  ? 'bg-emerald-500 text-white shadow-xl shadow-emerald-100 dark:shadow-none' 
+                                  : 'bg-slate-50 dark:bg-slate-800 text-slate-300 border dark:border-slate-700'
                               }`}
                             >
                               <Icons.Check />
@@ -462,90 +493,17 @@ const App: React.FC = () => {
             </div>
           )}
 
-          {activeView === 'habits' && (
-             <div className="max-w-6xl mx-auto space-y-6 md:space-y-12 animate-in slide-in-from-bottom-4 duration-500">
-                <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-                   <div>
-                     <h2 className="text-3xl md:text-4xl font-black tracking-tighter uppercase">Habit Identity Matrix</h2>
-                     <p className="text-xs md:text-sm text-slate-500 font-medium">Character consistency over the last 7 cycles.</p>
-                   </div>
-                   <button 
-                    onClick={() => setIsHabitModalOpen(true)}
-                    className="w-full md:w-auto px-6 py-4 bg-indigo-600 text-white text-xs md:text-sm font-black rounded-2xl shadow-xl active:scale-95 transition-all"
-                   >
-                     + DEFINE NEW TRAIT
-                   </button>
-                </header>
-
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] md:rounded-[3rem] border dark:border-slate-800 overflow-hidden shadow-sm">
-                   <div className="overflow-x-auto no-scrollbar">
-                      <table className="w-full text-left border-collapse min-w-[500px]">
-                         <thead>
-                            <tr className="bg-slate-50 dark:bg-slate-800/50">
-                               <th className="p-4 md:p-8 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest border-b dark:border-slate-800 sticky left-0 bg-slate-50 dark:bg-slate-800/50 z-20">Character Trait</th>
-                               {Array.from({ length: 7 }).map((_, i) => {
-                                 const d = new Date();
-                                 d.setDate(d.getDate() - (6 - i));
-                                 return (
-                                   <th key={i} className="p-3 md:p-4 text-[9px] md:text-[10px] font-black text-slate-400 uppercase text-center border-b dark:border-slate-800">
-                                     {d.toLocaleDateString(undefined, { weekday: 'short' })}<br/>{d.getDate()}
-                                   </th>
-                                 );
-                               })}
-                            </tr>
-                         </thead>
-                         <tbody className="divide-y dark:divide-slate-800">
-                            {habits.map(habit => (
-                              <tr key={habit.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                                 <td className="p-4 md:p-8 border-r dark:border-slate-800 sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/30 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
-                                    <div className="flex items-center gap-3">
-                                       <span className="text-xl">{habit.icon}</span>
-                                       <div>
-                                          <p className="font-black text-xs md:text-sm truncate max-w-[120px]">{habit.name}</p>
-                                          <p className="text-[8px] md:text-[10px] text-slate-400 font-bold uppercase">{habit.category}</p>
-                                       </div>
-                                    </div>
-                                 </td>
-                                 {Array.from({ length: 7 }).map((_, i) => {
-                                    const d = new Date();
-                                    d.setDate(d.getDate() - (6 - i));
-                                    const dStr = d.toISOString().split('T')[0];
-                                    const isDone = habit.history[dStr];
-                                    return (
-                                      <td key={i} className="p-2 text-center">
-                                         <div 
-                                          onClick={() => toggleHabit(habit.id, dStr)}
-                                          className={`w-7 h-7 md:w-9 md:h-9 mx-auto rounded-xl cursor-pointer transition-all flex items-center justify-center active:scale-90 ${
-                                            isDone 
-                                              ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' 
-                                              : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700'
-                                          }`}
-                                         >
-                                           {isDone && <Icons.Check />}
-                                         </div>
-                                      </td>
-                                    );
-                                 })}
-                              </tr>
-                            ))}
-                         </tbody>
-                      </table>
-                   </div>
-                </div>
-             </div>
-          )}
-
           {activeView === 'analytics' && (
-            <div className="max-w-6xl mx-auto space-y-6 md:space-y-8 animate-in zoom-in-95 duration-500">
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
-                  <div className="bg-white dark:bg-slate-900 p-6 md:p-10 rounded-[2.5rem] border dark:border-slate-800 shadow-sm flex flex-col justify-between">
-                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aggregate Velocity</p>
-                     <div className="mt-4">
-                        <p className="text-5xl md:text-6xl font-black text-indigo-600 dark:text-indigo-400">{stats.lifeScore}%</p>
-                        <p className="text-[10px] md:text-xs font-bold text-emerald-500 mt-2 uppercase tracking-widest">↑ High performance detected</p>
+            <div className="max-w-6xl mx-auto space-y-10 animate-in zoom-in-95 duration-500">
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                  <div className="bg-white dark:bg-slate-900 p-8 md:p-12 rounded-[3rem] border dark:border-slate-800 shadow-sm flex flex-col justify-between">
+                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Stability</p>
+                     <div className="mt-6">
+                        <p className="text-6xl font-black text-indigo-600 dark:text-indigo-400 tabular-nums">{stats.lifeScore}%</p>
+                        <p className="text-[10px] font-black text-emerald-500 mt-4 uppercase tracking-[0.2em]">{stats.lifeScore > 80 ? 'Superior Performance' : 'Operational'}</p>
                      </div>
                   </div>
-                  <div className="md:col-span-2 bg-white dark:bg-slate-900 p-6 md:p-8 rounded-[2.5rem] border dark:border-slate-800 shadow-sm h-[280px] md:h-[350px]">
+                  <div className="md:col-span-2 bg-white dark:bg-slate-900 p-8 md:p-10 rounded-[3rem] border dark:border-slate-800 shadow-sm h-[350px]">
                      <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={[
                           { name: 'Mon', v: 40 }, { name: 'Tue', v: 70 }, { name: 'Wed', v: 65 }, 
@@ -553,42 +511,102 @@ const App: React.FC = () => {
                         ]}>
                            <defs>
                               <linearGradient id="colorV" x1="0" y1="0" x2="0" y2="1">
-                                 <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3}/>
+                                 <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.4}/>
                                  <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
                               </linearGradient>
                            </defs>
-                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eee" />
-                           <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 900 }} />
-                           <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 20px rgba(0,0,0,0.05)', fontSize: '10px' }} />
-                           <Area type="monotone" dataKey="v" stroke="#4f46e5" strokeWidth={4} fillOpacity={1} fill="url(#colorV)" />
+                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                           <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 900, fill: '#94a3b8' }} />
+                           <Tooltip contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 900 }} />
+                           <Area type="monotone" dataKey="v" stroke="#4f46e5" strokeWidth={5} fillOpacity={1} fill="url(#colorV)" animationDuration={1500} />
                         </AreaChart>
                      </ResponsiveContainer>
                   </div>
+               </div>
+
+               {/* Milestone Section */}
+               <section>
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-8 text-slate-400">Character Milestones</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                     {achievements.map(award => (
+                       <div key={award.id} className={`p-8 rounded-[2.5rem] border flex flex-col items-center text-center gap-4 transition-all duration-500 ${award.unlocked ? 'bg-white dark:bg-slate-900 border-indigo-100 dark:border-indigo-900 shadow-xl' : 'opacity-30 grayscale blur-[0.5px] border-slate-100 dark:border-slate-800'}`}>
+                          <span className="text-4xl">{award.icon}</span>
+                          <div>
+                            <p className="font-black text-xs uppercase tracking-widest">{award.title}</p>
+                            <p className="text-[9px] font-medium text-slate-400 mt-1">{award.desc}</p>
+                          </div>
+                       </div>
+                     ))}
+                  </div>
+               </section>
+            </div>
+          )}
+
+          {activeView === 'settings' && (
+            <div className="max-w-3xl mx-auto space-y-10 animate-in slide-in-from-bottom-8 duration-500">
+               <h2 className="text-4xl font-black tracking-tighter uppercase">System Config</h2>
+               
+               <div className="bg-white dark:bg-slate-900 rounded-[3rem] p-8 md:p-12 border dark:border-slate-800 shadow-sm space-y-12">
+                  <section className="space-y-6">
+                     <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Data Manifest Operations</h3>
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <button 
+                          onClick={handleExport}
+                          className="flex items-center justify-center gap-3 p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all group"
+                        >
+                           <Icons.Download />
+                           <span className="text-xs font-black uppercase tracking-widest">Backup Character</span>
+                        </button>
+                        <button 
+                          onClick={handleClearData}
+                          className="flex items-center justify-center gap-3 p-6 bg-rose-50 dark:bg-rose-900/10 rounded-2xl hover:bg-rose-100 dark:hover:bg-rose-900/30 text-rose-600 transition-all"
+                        >
+                           <Icons.Trash />
+                           <span className="text-xs font-black uppercase tracking-widest">Extinguish Purge</span>
+                        </button>
+                     </div>
+                  </section>
+
+                  <section className="space-y-6 pt-10 border-t dark:border-slate-800">
+                     <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Interface Matrix</h3>
+                     <div className="flex items-center justify-between p-6 bg-slate-50 dark:bg-slate-800 rounded-2xl">
+                        <div>
+                           <p className="text-sm font-black uppercase tracking-widest">High Contrast Vision</p>
+                           <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Switch between Light and Dark core</p>
+                        </div>
+                        <button 
+                          onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+                          className="px-6 py-3 bg-indigo-600 text-white text-[10px] font-black rounded-xl uppercase tracking-widest shadow-lg"
+                        >
+                          {theme === 'light' ? 'Go Dark' : 'Go Light'}
+                        </button>
+                     </div>
+                  </section>
                </div>
             </div>
           )}
 
           {activeView === 'journal' && (
             <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in duration-500">
-               <h2 className="text-3xl font-black tracking-tighter uppercase">Character Manifest</h2>
-               <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 md:p-10 border dark:border-slate-800 shadow-sm space-y-6">
-                  <div className="space-y-3">
-                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Entry for {formatDisplayDate(selectedDate)}</label>
+               <h2 className="text-3xl font-black tracking-tighter uppercase">Manifest Log</h2>
+               <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 md:p-12 border dark:border-slate-800 shadow-sm space-y-8">
+                  <div className="space-y-4">
+                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Recording for {formatDisplayDate(selectedDate)}</label>
                      <textarea 
                        value={reflections[selectedDate]?.journal || ''}
                        onChange={e => {
                          const val = e.target.value;
                          setReflections(prev => ({ ...prev, [selectedDate]: { ...prev[selectedDate], journal: val, date: selectedDate, well: '', improvement: '' } }));
                        }}
-                       placeholder="How did the character evolve today? Any bugs fixed in the daily routine?"
-                       className="w-full h-48 md:h-80 p-5 md:p-7 bg-slate-50 dark:bg-slate-800/50 rounded-[1.5rem] border-none outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm leading-relaxed"
+                       placeholder="How has the character evolved today? Document your quest findings."
+                       className="w-full h-64 md:h-96 p-8 bg-slate-50 dark:bg-slate-800/50 rounded-[2rem] border dark:border-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all text-base font-medium leading-relaxed"
                      />
                   </div>
                   <button 
-                    onClick={() => showToast("Manifest entry synchronized", "success")}
-                    className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl shadow-xl active:scale-95 transition-all uppercase tracking-widest text-xs"
+                    onClick={() => showToast("Character log entry synchronized", "success")}
+                    className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl shadow-xl hover:shadow-indigo-200 dark:shadow-none active:scale-[0.98] transition-all uppercase tracking-[0.2em] text-xs"
                   >
-                    SAVE LOG ENTRY
+                    Commit Entry to Void
                   </button>
                </div>
             </div>
@@ -598,61 +616,80 @@ const App: React.FC = () => {
       </main>
 
       {/* Bottom Nav (Mobile Only) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-slate-900 border-t dark:border-slate-800 flex items-center justify-around px-2 z-50">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-20 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-t dark:border-slate-800 flex items-center justify-around px-4 z-50 shadow-[0_-10px_30px_rgba(0,0,0,0.05)]">
         <NavItem id="daily" label="Play" icon={Icons.Calendar} isActive={activeView === 'daily'} onClick={() => setActiveView('daily')} isBottomNav />
-        <NavItem id="habits" label="Matrix" icon={Icons.Check} isActive={activeView === 'habits'} onClick={() => setActiveView('habits')} isBottomNav />
-        <div className="flex-1 flex justify-center -mt-8">
+        <NavItem id="habits" label="Traits" icon={Icons.Check} isActive={activeView === 'habits'} onClick={() => setActiveView('habits')} isBottomNav />
+        <div className="flex-1 flex justify-center -mt-10">
            <button 
               onClick={() => { setEditingTask(null); setIsTaskModalOpen(true); }}
-              className="w-14 h-14 bg-indigo-600 text-white rounded-2xl shadow-xl flex items-center justify-center active:scale-90 transition-all border-4 border-slate-50 dark:border-slate-950"
+              className="w-16 h-16 bg-indigo-600 text-white rounded-3xl shadow-2xl flex items-center justify-center active:scale-90 transition-all border-8 border-slate-50 dark:border-slate-950"
            >
              <Icons.Plus />
            </button>
         </div>
         <NavItem id="analytics" label="Stats" icon={Icons.Chart} isActive={activeView === 'analytics'} onClick={() => setActiveView('analytics')} isBottomNav />
-        <NavItem id="journal" label="Log" icon={Icons.Book} isActive={activeView === 'journal'} onClick={() => setActiveView('journal')} isBottomNav />
+        <NavItem id="settings" label="Config" icon={Icons.Settings} isActive={activeView === 'settings'} onClick={() => setActiveView('settings')} isBottomNav />
       </nav>
 
-      {/* Desktop Quick Add FAB */}
-      <button 
-        onClick={() => { setEditingTask(null); setIsTaskModalOpen(true); }}
-        className="hidden md:flex fixed bottom-10 right-10 w-16 h-16 bg-indigo-600 text-white rounded-3xl shadow-2xl items-center justify-center hover:scale-110 active:scale-90 transition-all z-50 group"
-      >
-        <Icons.Plus />
-      </button>
+      {/* Confirmation Modal System */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-[300] bg-slate-950/60 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in duration-300">
+           <div className="bg-white dark:bg-slate-900 w-full max-w-sm p-10 rounded-[3rem] shadow-2xl border dark:border-slate-800 text-center space-y-6">
+              <div className="w-16 h-16 bg-rose-50 dark:bg-rose-900/20 text-rose-500 rounded-3xl flex items-center justify-center mx-auto mb-4">
+                 <Icons.Trash />
+              </div>
+              <h3 className="text-xl font-black uppercase tracking-tighter">{confirmModal.title}</h3>
+              <p className="text-xs text-slate-500 font-bold leading-relaxed">{confirmModal.desc}</p>
+              <div className="flex flex-col gap-3 pt-4">
+                 <button 
+                   onClick={confirmModal.onConfirm}
+                   className="w-full py-4 bg-rose-600 text-white font-black rounded-2xl shadow-xl shadow-rose-100 dark:shadow-none hover:bg-rose-700 active:scale-95 transition-all uppercase tracking-widest text-[10px]"
+                 >
+                   CONFIRM EXTERMINATION
+                 </button>
+                 <button 
+                   onClick={() => setConfirmModal(null)}
+                   className="w-full py-4 bg-slate-100 dark:bg-slate-800 text-slate-500 font-black rounded-2xl hover:bg-slate-200 active:scale-95 transition-all uppercase tracking-widest text-[10px]"
+                 >
+                   ABORT OPS
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
 
       {/* Habit Creation Modal */}
       {isHabitModalOpen && (
-        <div className="fixed inset-0 z-[110] bg-slate-950/40 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-4 animate-in fade-in duration-200">
-           <div className="bg-white dark:bg-slate-900 w-full max-w-md p-6 md:p-10 rounded-t-[2.5rem] md:rounded-[3rem] shadow-2xl animate-in slide-in-from-bottom md:zoom-in-95 duration-300">
-              <h2 className="text-2xl font-black tracking-tighter mb-6 uppercase">New Trait Definition</h2>
+        <div className="fixed inset-0 z-[110] bg-slate-950/60 backdrop-blur-xl flex items-end md:items-center justify-center p-0 md:p-6 animate-in fade-in duration-300">
+           <div className="bg-white dark:bg-slate-900 w-full max-w-md p-8 md:p-12 rounded-t-[3rem] md:rounded-[3rem] shadow-2xl animate-in slide-in-from-bottom md:zoom-in-95 duration-400">
+              <h2 className="text-3xl font-black tracking-tighter mb-8 uppercase text-center">Define Trait</h2>
               <form onSubmit={e => {
                 e.preventDefault();
                 const f = new FormData(e.currentTarget);
                 handleAddHabit(f.get('name') as string, f.get('icon') as string, f.get('category') as string);
-              }} className="space-y-4">
-                <div className="space-y-1">
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Trait Name</label>
-                   <input name="name" required placeholder="e.g. Morning Meditation" className="w-full p-4 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold border-none outline-none focus:ring-2 focus:ring-indigo-500 text-sm" />
+              }} className="space-y-6">
+                <div className="space-y-2">
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Trait Identification</label>
+                   <input name="name" required placeholder="e.g. Deep Meditation Protocol" className="w-full p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold border dark:border-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/10 text-sm" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Symbol</label>
-                    <input name="icon" defaultValue="⚡" className="w-full p-4 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold text-sm text-center" />
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Glyph</label>
+                    <input name="icon" defaultValue="⚡" className="w-full p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold text-base text-center border dark:border-slate-700" />
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Type</label>
-                    <select name="category" className="w-full p-4 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold text-sm outline-none appearance-none">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Domain</label>
+                    <select name="category" className="w-full p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold text-xs outline-none border dark:border-slate-700 appearance-none uppercase tracking-widest">
+                       <option>Physical</option>
+                       <option>Mental</option>
+                       <option>Spiritual</option>
                        <option>Skill</option>
-                       <option>Body</option>
-                       <option>Mind</option>
-                       <option>Social</option>
                     </select>
                   </div>
                 </div>
-                <div className="flex gap-4 pt-4">
-                   <button type="button" onClick={() => setIsHabitModalOpen(false)} className="flex-1 py-4 font-black text-slate-400 text-xs uppercase">Abort</button>
-                   <button type="submit" className="flex-[2] py-4 bg-indigo-600 text-white font-black rounded-xl text-xs uppercase shadow-lg">Define Trait</button>
+                <div className="flex flex-col gap-3 pt-6 pb-10 md:pb-0">
+                   <button type="submit" className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl shadow-xl hover:bg-indigo-700 transition-all uppercase tracking-[0.2em] text-[10px]">Integrate Into Code</button>
+                   <button type="button" onClick={() => setIsHabitModalOpen(false)} className="w-full py-4 font-black text-slate-400 text-[10px] uppercase tracking-widest hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl">Abort Protocol</button>
                 </div>
               </form>
            </div>
@@ -661,19 +698,27 @@ const App: React.FC = () => {
 
       {/* Task Creation Modal */}
       {isTaskModalOpen && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/40 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-xl p-6 md:p-10 rounded-t-[2.5rem] md:rounded-[3rem] shadow-2xl animate-in slide-in-from-bottom md:zoom-in-95 duration-300">
-            <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto mb-6 md:hidden" />
-            <div className="flex items-center justify-between mb-6 md:mb-8">
-               <h2 className="text-2xl md:text-3xl font-black tracking-tighter uppercase">Initialize Mission</h2>
+        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-xl flex items-end md:items-center justify-center p-0 md:p-6 animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-xl p-8 md:p-12 rounded-t-[3rem] md:rounded-[4rem] shadow-2xl animate-in slide-in-from-bottom md:zoom-in-95 duration-400">
+            <div className="w-16 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full mx-auto mb-10 md:hidden" />
+            <div className="flex items-center justify-between mb-8">
+               <h2 className="text-3xl font-black tracking-tighter uppercase">Mission Launch</h2>
                {editingTask && (
                  <button 
                   onClick={() => {
-                    setTasks(prev => prev.filter(t => t.id !== editingTask.id));
-                    setIsTaskModalOpen(false);
-                    showToast("Mission aborted and purged", "error");
+                    setConfirmModal({
+                      isOpen: true,
+                      title: "PURGE MISSION?",
+                      desc: "This specific quest will be terminated. Progress XP will be lost.",
+                      onConfirm: () => {
+                        setTasks(prev => prev.filter(t => t.id !== editingTask.id));
+                        setIsTaskModalOpen(false);
+                        showToast("Mission status: terminated", "error");
+                        setConfirmModal(null);
+                      }
+                    });
                   }}
-                  className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-all"
+                  className="p-4 bg-rose-50 dark:bg-rose-900/20 text-rose-500 rounded-2xl hover:bg-rose-100 transition-all border dark:border-rose-900/50"
                  >
                    <Icons.Trash />
                  </button>
@@ -689,32 +734,32 @@ const App: React.FC = () => {
                 priority: f.get('priority') as Priority,
                 isAllDay: f.get('allDay') === 'on',
               });
-            }} className="space-y-4 md:space-y-6">
-              <div className="space-y-1 md:space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mission Label</label>
-                <input name="title" defaultValue={editingTask?.title} required className="w-full p-4 rounded-xl md:rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold border-none outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm" autoFocus />
+            }} className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Objective Designation</label>
+                <input name="title" defaultValue={editingTask?.title} required className="w-full p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold border dark:border-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all text-sm" autoFocus />
               </div>
-              <div className="grid grid-cols-2 gap-4 md:gap-6">
-                <div className="space-y-1 md:space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Launch Time</label>
-                  <input name="start" type="time" defaultValue={editingTask?.startTime || "09:00"} className="w-full p-4 rounded-xl md:rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold text-sm" />
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">T-Minus (Start)</label>
+                  <input name="start" type="time" defaultValue={editingTask?.startTime || "09:00"} className="w-full p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold text-sm border dark:border-slate-700" />
                 </div>
-                <div className="space-y-1 md:space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">End Time</label>
-                  <input name="end" type="time" defaultValue={editingTask?.endTime || "10:00"} className="w-full p-4 rounded-xl md:rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold text-sm" />
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ETA (Completion)</label>
+                  <input name="end" type="time" defaultValue={editingTask?.endTime || "10:00"} className="w-full p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold text-sm border dark:border-slate-700" />
                 </div>
               </div>
-              <div className="space-y-1 md:space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mission Complexity</label>
-                <select name="priority" defaultValue={editingTask?.priority || Priority.MEDIUM} className="w-full p-4 rounded-xl md:rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold border-none outline-none text-sm appearance-none">
-                  <option value={Priority.LOW}>Side Quest (+5 XP)</option>
-                  <option value={Priority.MEDIUM}>Main Quest (+15 XP)</option>
-                  <option value={Priority.HIGH}>Critical Raid (+25 XP)</option>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Complexity Vector</label>
+                <select name="priority" defaultValue={editingTask?.priority || Priority.MEDIUM} className="w-full p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 font-bold border dark:border-slate-700 outline-none text-xs uppercase tracking-widest appearance-none">
+                  <option value={Priority.LOW}>Standard Loop (+5 XP)</option>
+                  <option value={Priority.MEDIUM}>Primary Mission (+15 XP)</option>
+                  <option value={Priority.HIGH}>Alpha Critical (+25 XP)</option>
                 </select>
               </div>
-              <div className="flex gap-3 md:gap-4 mt-6 md:mt-8 pb-8 md:pb-0">
-                <button type="button" onClick={() => setIsTaskModalOpen(false)} className="flex-1 py-4 font-black text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl md:rounded-2xl transition-all text-xs uppercase tracking-widest">Close</button>
-                <button type="submit" className="flex-[2] py-4 bg-indigo-600 text-white font-black rounded-xl md:rounded-2xl shadow-lg hover:bg-indigo-700 transition-all text-xs uppercase tracking-widest">Commit Mission</button>
+              <div className="flex flex-col md:flex-row gap-4 mt-10 pb-12 md:pb-0">
+                <button type="submit" className="flex-[2] py-5 bg-indigo-600 text-white font-black rounded-2xl shadow-xl hover:bg-indigo-700 transition-all uppercase tracking-[0.2em] text-[10px]">Commit Character to Mission</button>
+                <button type="button" onClick={() => setIsTaskModalOpen(false)} className="flex-1 py-5 font-black text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-all uppercase tracking-widest text-[10px]">Discard Ops</button>
               </div>
             </form>
           </div>
