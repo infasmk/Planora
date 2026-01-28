@@ -27,6 +27,14 @@ const formatDisplayDate = (dateStr: string) => {
   });
 };
 
+const getLast7Days = () => {
+  return Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return d.toISOString().split('T')[0];
+  });
+};
+
 // --- Sub-components ---
 interface NavItemProps {
   id: string;
@@ -170,11 +178,7 @@ const App: React.FC = () => {
     const xp = (completedTasks * 25) + (completedHabits * 10);
     const level = Math.floor(xp / 250) + 1;
     
-    const last7Days = Array.from({ length: 7 }).map((_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      return d.toISOString().split('T')[0];
-    });
+    const last7Days = getLast7Days();
 
     let consistencySum = 0;
     last7Days.forEach(date => {
@@ -493,6 +497,83 @@ const App: React.FC = () => {
             </div>
           )}
 
+          {activeView === 'habits' && (
+            <div className="max-w-6xl mx-auto space-y-8 animate-in slide-in-from-bottom-8 duration-500 pb-20">
+               <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                  <div>
+                    <h2 className="text-4xl font-black tracking-tighter uppercase">Trait Matrix</h2>
+                    <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-2">Historical data for the last 7 character cycles.</p>
+                  </div>
+                  <button 
+                    onClick={() => setIsHabitModalOpen(true)}
+                    className="px-8 py-4 bg-indigo-600 text-white text-xs font-black rounded-2xl shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all uppercase tracking-widest"
+                  >
+                    + Define New Trait
+                  </button>
+               </header>
+
+               <div className="bg-white dark:bg-slate-900 rounded-[3rem] border dark:border-slate-800 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto no-scrollbar">
+                    <table className="w-full text-left border-collapse min-w-[640px]">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-800/50">
+                          <th className="p-8 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b dark:border-slate-800 sticky left-0 bg-slate-50 dark:bg-slate-800/50 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">Character Trait</th>
+                          {getLast7Days().map((dStr) => {
+                            const d = new Date(dStr + 'T00:00:00');
+                            return (
+                              <th key={dStr} className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center border-b dark:border-slate-800">
+                                {d.toLocaleDateString(undefined, { weekday: 'short' })}<br/>
+                                <span className="text-slate-900 dark:text-slate-200 mt-1 inline-block">{d.getDate()}</span>
+                              </th>
+                            );
+                          })}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y dark:divide-slate-800">
+                        {habits.length === 0 && (
+                          <tr>
+                            <td colSpan={8} className="p-20 text-center text-slate-400 uppercase text-[10px] font-black tracking-[0.2em]">
+                               Matrix empty. Initialize traits to begin tracking.
+                            </td>
+                          </tr>
+                        )}
+                        {habits.map(habit => (
+                          <tr key={habit.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                            <td className="p-8 border-r dark:border-slate-800 sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/30 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
+                              <div className="flex items-center gap-4">
+                                <span className="text-2xl group-hover:scale-110 transition-transform">{habit.icon}</span>
+                                <div>
+                                  <p className="font-black text-sm tracking-tight">{habit.name}</p>
+                                  <p className="text-[8px] font-black text-slate-400 uppercase mt-0.5">{habit.category}</p>
+                                </div>
+                              </div>
+                            </td>
+                            {getLast7Days().map(dStr => {
+                              const isDone = habit.history[dStr];
+                              return (
+                                <td key={dStr} className="p-4 text-center">
+                                  <button 
+                                    onClick={() => toggleHabit(habit.id, dStr)}
+                                    className={`w-10 h-10 mx-auto rounded-xl flex items-center justify-center transition-all active:scale-90 border-2 ${
+                                      isDone 
+                                        ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-100 dark:shadow-none' 
+                                        : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-transparent hover:text-slate-200'
+                                    }`}
+                                  >
+                                    <Icons.Check />
+                                  </button>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+               </div>
+            </div>
+          )}
+
           {activeView === 'analytics' && (
             <div className="max-w-6xl mx-auto space-y-10 animate-in zoom-in-95 duration-500">
                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -634,7 +715,7 @@ const App: React.FC = () => {
       {/* Confirmation Modal System */}
       {confirmModal && (
         <div className="fixed inset-0 z-[300] bg-slate-950/60 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in duration-300">
-           <div className="bg-white dark:bg-slate-900 w-full max-w-sm p-10 rounded-[3rem] shadow-2xl border dark:border-slate-800 text-center space-y-6">
+           <div className="bg-white dark:bg-slate-900 w-full max-sm:max-w-xs p-8 md:p-10 rounded-[3rem] shadow-2xl border dark:border-slate-800 text-center space-y-6">
               <div className="w-16 h-16 bg-rose-50 dark:bg-rose-900/20 text-rose-500 rounded-3xl flex items-center justify-center mx-auto mb-4">
                  <Icons.Trash />
               </div>
