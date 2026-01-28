@@ -12,7 +12,7 @@ import { Icons, COLORS } from './constants';
 import { analyzeSchedule } from './geminiService';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  LineChart, Line, Cell
+  Cell
 } from 'recharts';
 
 // --- Utilities ---
@@ -35,7 +35,6 @@ const App: React.FC = () => {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [selectedDate, setSelectedDate] = useState(getTodayStr());
   
-  // Initialize theme from system preference or local storage
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('zenith_v3_store');
@@ -69,11 +68,9 @@ const App: React.FC = () => {
         if (parsed.tasks) setTasks(parsed.tasks);
         if (parsed.reflections) setReflections(parsed.reflections);
         if (parsed.habits) setHabits(parsed.habits);
-        // Note: theme is already initialized in useState initializer
       } catch (e) { console.error("Restore failed", e); }
     }
     
-    // Notifications Permission
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
@@ -84,7 +81,6 @@ const App: React.FC = () => {
 
   useEffect(() => {
     localStorage.setItem('zenith_v3_store', JSON.stringify({ tasks, reflections, habits, theme }));
-    // Critical fix: Ensure the 'dark' class is on the HTML element
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
@@ -94,7 +90,7 @@ const App: React.FC = () => {
 
   // --- Actions ---
   const handleSaveTask = (taskData: Partial<Task>) => {
-    if (editingTask) {
+    if (editingTask && editingTask.id) {
       setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...taskData } : t));
     } else {
       const newTask: Task = {
@@ -119,7 +115,6 @@ const App: React.FC = () => {
     setTasks(prev => prev.map(t => {
       if (t.id === id) {
         const nextStatus = t.status === Status.COMPLETED ? Status.PENDING : Status.COMPLETED;
-        // Logic for recurrence completion
         if (nextStatus === Status.COMPLETED && t.recurrence === Recurrence.DAILY) {
           const nextDate = new Date(t.date);
           nextDate.setDate(nextDate.getDate() + 1);
@@ -135,6 +130,21 @@ const App: React.FC = () => {
       }
       return t;
     }));
+  };
+
+  const handleDeleteTask = (id: string) => {
+    setTasks(prev => prev.filter(t => t.id !== id));
+    setIsTaskModalOpen(false);
+    setEditingTask(null);
+  };
+
+  const clearAllData = () => {
+    if (confirm("Are you sure you want to delete ALL planner data? This cannot be undone.")) {
+      setTasks([]);
+      setReflections({});
+      setHabits([]);
+      localStorage.removeItem('zenith_v3_store');
+    }
   };
 
   const handleToggleHabit = (habitId: string, date: string) => {
@@ -156,12 +166,6 @@ const App: React.FC = () => {
         [field]: value
       }
     }));
-  };
-
-  const handleDeleteTask = (id: string) => {
-    setTasks(prev => prev.filter(t => t.id !== id));
-    setIsTaskModalOpen(false);
-    setEditingTask(null);
   };
 
   // --- Derived State ---
@@ -216,7 +220,6 @@ const App: React.FC = () => {
     }
   };
 
-  // --- Keyboard Shortcuts ---
   useEffect(() => {
     const handleKeys = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey) return;
@@ -230,7 +233,6 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeys);
   }, []);
 
-  // --- Sub-components ---
   const SidebarButton = ({ id, label, icon: Icon }: { id: any, label: string, icon: any }) => (
     <button
       onClick={() => setActiveTab(id)}
@@ -293,17 +295,22 @@ const App: React.FC = () => {
             <Icons.Download />
             <span className="text-sm font-medium">Export CSV</span>
           </button>
+          <button 
+            onClick={clearAllData}
+            className="flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-rose-50 dark:hover:bg-rose-900/20 text-rose-500 w-full transition-colors"
+          >
+            <Icons.Trash />
+            <span className="text-sm font-medium">Clear All Data</span>
+          </button>
         </div>
       </aside>
 
       {/* Main Container */}
       <main className="flex-1 bg-slate-50 dark:bg-slate-950 p-4 md:p-12 overflow-x-hidden transition-colors">
         
-        {/* Tab Switching Content */}
         {activeTab === 'planner' && (
           <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             
-            {/* Header: Search & Date */}
             <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
               <div className="space-y-1">
                 <h2 className="text-3xl font-black tracking-tight">{formatDisplayDate(selectedDate)}</h2>
@@ -336,12 +343,13 @@ const App: React.FC = () => {
                 <button 
                   onClick={async () => {
                     setIsAiLoading(true);
+                    setAiInsight(null);
                     const res = await analyzeSchedule(tasks, selectedDate);
                     setAiInsight(res);
                     setIsAiLoading(false);
                   }}
                   disabled={isAiLoading}
-                  className="p-3 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-2xl hover:bg-indigo-100 transition-colors disabled:opacity-50"
+                  className={`p-3 rounded-2xl transition-all ${isAiLoading ? 'bg-indigo-100 dark:bg-indigo-900 animate-pulse' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100'}`}
                   title="AI Insights"
                 >
                   <Icons.Brain />
@@ -349,7 +357,6 @@ const App: React.FC = () => {
               </div>
             </header>
 
-            {/* AI Callout */}
             {aiInsight && (
               <div className="p-6 bg-gradient-to-br from-indigo-50 to-violet-50 dark:from-indigo-900/20 dark:to-violet-900/20 rounded-3xl border border-indigo-100 dark:border-indigo-800 shadow-sm relative overflow-hidden group">
                 <button onClick={() => setAiInsight(null)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">&times;</button>
@@ -363,14 +370,10 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {/* Content Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-              
-              {/* Task Timeline */}
               <div className="lg:col-span-8 space-y-6">
                 <div className="bg-white dark:bg-slate-900 rounded-3xl border dark:border-slate-800 overflow-hidden shadow-sm divide-y dark:divide-slate-800 transition-colors">
                   
-                  {/* All Day Tasks Section */}
                   {filteredTasks.filter(t => t.isAllDay).length > 0 && (
                     <div className="p-4 bg-slate-50 dark:bg-slate-800/30">
                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">All-Day Focus</span>
@@ -397,9 +400,8 @@ const App: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Hourly Grid */}
                   {Array.from({ length: 16 }).map((_, i) => {
-                    const hour = i + 6; // Start at 6 AM
+                    const hour = i + 6;
                     const hourStr = `${hour.toString().padStart(2, '0')}:00`;
                     const hourTasks = filteredTasks.filter(t => !t.isAllDay && t.startTime.startsWith(hour.toString().padStart(2, '0')));
                     const isCurrentHour = currentTime.getHours() === hour;
@@ -461,10 +463,7 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Summary & Stats Panel */}
               <div className="lg:col-span-4 space-y-8">
-                
-                {/* Score Card */}
                 <div className="bg-indigo-600 p-8 rounded-[2.5rem] text-white shadow-2xl shadow-indigo-200 dark:shadow-none relative overflow-hidden group transition-transform">
                   <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-3xl group-hover:bg-white/20 transition-all"></div>
                   <h3 className="text-indigo-200 text-xs font-black uppercase tracking-widest mb-8">Productivity Score</h3>
@@ -483,7 +482,6 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Quick Reflections Mini View */}
                 <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border dark:border-slate-800 shadow-sm space-y-6 transition-colors">
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-amber-50 dark:bg-amber-900/30 text-amber-600 rounded-xl"><Icons.Brain /></div>
@@ -496,16 +494,6 @@ const App: React.FC = () => {
                     className="w-full h-32 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border-none outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm placeholder:text-slate-400"
                   />
                 </div>
-
-                {/* Export Card */}
-                <div className="p-6 bg-slate-100 dark:bg-slate-900/50 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 flex flex-col gap-3 transition-colors">
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Tools & Data</p>
-                   <div className="flex gap-2">
-                     <button onClick={() => exportData('csv')} className="flex-1 py-2 bg-white dark:bg-slate-800 rounded-xl text-xs font-bold hover:shadow-md transition-all">CSV Export</button>
-                     <button onClick={() => exportData('json')} className="flex-1 py-2 bg-white dark:bg-slate-800 rounded-xl text-xs font-bold hover:shadow-md transition-all">Backup JSON</button>
-                   </div>
-                </div>
-
               </div>
             </div>
           </div>
@@ -658,16 +646,6 @@ const App: React.FC = () => {
                   />
                 </div>
 
-                <div className="space-y-4">
-                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest block">Extended Thoughts / Gratitude</label>
-                  <textarea 
-                    value={reflections[selectedDate]?.journal || ''}
-                    onChange={e => handleReflectionChange('journal', e.target.value)}
-                    placeholder="Let your thoughts flow freely..."
-                    className="w-full min-h-[200px] p-6 bg-slate-50 dark:bg-slate-800/50 rounded-[2rem] border-none outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm leading-relaxed"
-                  />
-                </div>
-
                 <div className="flex justify-end pt-4">
                   <button 
                     onClick={() => {
@@ -684,7 +662,6 @@ const App: React.FC = () => {
 
       </main>
 
-      {/* Floating Action Button */}
       <button 
         onClick={() => { setEditingTask(null); setIsTaskModalOpen(true); }}
         className="fixed bottom-10 right-10 w-16 h-16 bg-indigo-600 text-white rounded-3xl shadow-2xl shadow-indigo-400 dark:shadow-indigo-900 flex items-center justify-center hover:scale-110 active:scale-90 transition-all z-50 group"
@@ -693,7 +670,6 @@ const App: React.FC = () => {
         <span className="absolute right-20 bg-slate-900 text-white text-[10px] font-black py-2 px-4 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none uppercase tracking-widest">Quick Task (N)</span>
       </button>
 
-      {/* Task Modal */}
       {isTaskModalOpen && (
         <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in duration-300">
           <div className="bg-white dark:bg-slate-900 w-full max-w-xl p-10 rounded-[3rem] shadow-2xl animate-in zoom-in-95 duration-200 transition-colors">
@@ -771,10 +747,10 @@ const App: React.FC = () => {
               </div>
 
               <div className="flex gap-4 mt-10">
-                {editingTask && (
+                {editingTask && editingTask.id && (
                    <button 
                     type="button" 
-                    onClick={() => { if(confirm("Discard this task?")) handleDeleteTask(editingTask!.id); }}
+                    onClick={() => { if(confirm("Discard this task?")) handleDeleteTask(editingTask.id); }}
                     className="p-4 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-2xl transition-all"
                    >
                      <Icons.Trash />
