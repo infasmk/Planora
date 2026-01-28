@@ -34,7 +34,22 @@ const App: React.FC = () => {
   const [reflections, setReflections] = useState<Record<string, Reflection>>({});
   const [habits, setHabits] = useState<Habit[]>([]);
   const [selectedDate, setSelectedDate] = useState(getTodayStr());
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  
+  // Initialize theme from system preference or local storage
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('zenith_v3_store');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.theme) return parsed.theme;
+        } catch (e) {}
+      }
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return 'light';
+  });
+
   const [activeTab, setActiveTab] = useState<'planner' | 'insights' | 'reflections' | 'habits'>('planner');
   
   // --- UI State ---
@@ -54,7 +69,7 @@ const App: React.FC = () => {
         if (parsed.tasks) setTasks(parsed.tasks);
         if (parsed.reflections) setReflections(parsed.reflections);
         if (parsed.habits) setHabits(parsed.habits);
-        if (parsed.theme) setTheme(parsed.theme);
+        // Note: theme is already initialized in useState initializer
       } catch (e) { console.error("Restore failed", e); }
     }
     
@@ -69,7 +84,12 @@ const App: React.FC = () => {
 
   useEffect(() => {
     localStorage.setItem('zenith_v3_store', JSON.stringify({ tasks, reflections, habits, theme }));
-    document.documentElement.classList.toggle('dark', theme === 'dark');
+    // Critical fix: Ensure the 'dark' class is on the HTML element
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   }, [tasks, reflections, habits, theme]);
 
   // --- Actions ---
@@ -104,7 +124,6 @@ const App: React.FC = () => {
           const nextDate = new Date(t.date);
           nextDate.setDate(nextDate.getDate() + 1);
           const nextDateStr = nextDate.toISOString().split('T')[0];
-          // Check if already exists for tomorrow to avoid duplicates
           const alreadyExists = prev.some(item => item.title === t.title && item.date === nextDateStr);
           if (!alreadyExists) {
              setTimeout(() => {
@@ -137,6 +156,12 @@ const App: React.FC = () => {
         [field]: value
       }
     }));
+  };
+
+  const handleDeleteTask = (id: string) => {
+    setTasks(prev => prev.filter(t => t.id !== id));
+    setIsTaskModalOpen(false);
+    setEditingTask(null);
   };
 
   // --- Derived State ---
@@ -195,6 +220,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleKeys = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === 'n') { e.preventDefault(); setEditingTask(null); setIsTaskModalOpen(true); }
       if (e.key === 's') { e.preventDefault(); document.getElementById('search-input')?.focus(); }
       if (e.key === 't') { e.preventDefault(); setSelectedDate(getTodayStr()); }
@@ -232,14 +258,14 @@ const App: React.FC = () => {
           <span className="text-xl font-black tracking-tight bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Zenith</span>
         </div>
         <div className="flex gap-1">
-          <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800">
+          <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 transition-colors">
             {theme === 'light' ? <Icons.Moon /> : <Icons.Sun />}
           </button>
         </div>
       </div>
 
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-72 bg-white dark:bg-slate-900 border-r dark:border-slate-800 p-8 sticky top-0 h-screen overflow-y-auto">
+      <aside className="hidden md:flex flex-col w-72 bg-white dark:bg-slate-900 border-r dark:border-slate-800 p-8 sticky top-0 h-screen overflow-y-auto transition-colors">
         <div className="flex items-center gap-3 mb-12 px-2">
           <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black text-lg shadow-lg shadow-indigo-200 dark:shadow-none">Z</div>
           <h1 className="text-2xl font-black tracking-tighter">Zenith</h1>
@@ -258,7 +284,7 @@ const App: React.FC = () => {
             className="flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 w-full transition-colors"
           >
             {theme === 'light' ? <Icons.Moon /> : <Icons.Sun />}
-            <span className="text-sm font-medium">Dark Mode</span>
+            <span className="text-sm font-medium">{theme === 'light' ? 'Dark Mode' : 'Light Mode'}</span>
           </button>
           <button 
             onClick={() => exportData('csv')}
@@ -271,7 +297,7 @@ const App: React.FC = () => {
       </aside>
 
       {/* Main Container */}
-      <main className="flex-1 bg-slate-50 dark:bg-slate-950 p-4 md:p-12 overflow-x-hidden">
+      <main className="flex-1 bg-slate-50 dark:bg-slate-950 p-4 md:p-12 overflow-x-hidden transition-colors">
         
         {/* Tab Switching Content */}
         {activeTab === 'planner' && (
@@ -342,7 +368,7 @@ const App: React.FC = () => {
               
               {/* Task Timeline */}
               <div className="lg:col-span-8 space-y-6">
-                <div className="bg-white dark:bg-slate-900 rounded-3xl border dark:border-slate-800 overflow-hidden shadow-sm divide-y dark:divide-slate-800">
+                <div className="bg-white dark:bg-slate-900 rounded-3xl border dark:border-slate-800 overflow-hidden shadow-sm divide-y dark:divide-slate-800 transition-colors">
                   
                   {/* All Day Tasks Section */}
                   {filteredTasks.filter(t => t.isAllDay).length > 0 && (
@@ -439,7 +465,7 @@ const App: React.FC = () => {
               <div className="lg:col-span-4 space-y-8">
                 
                 {/* Score Card */}
-                <div className="bg-indigo-600 p-8 rounded-[2.5rem] text-white shadow-2xl shadow-indigo-200 dark:shadow-none relative overflow-hidden group">
+                <div className="bg-indigo-600 p-8 rounded-[2.5rem] text-white shadow-2xl shadow-indigo-200 dark:shadow-none relative overflow-hidden group transition-transform">
                   <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-3xl group-hover:bg-white/20 transition-all"></div>
                   <h3 className="text-indigo-200 text-xs font-black uppercase tracking-widest mb-8">Productivity Score</h3>
                   <div className="flex items-end justify-between">
@@ -458,7 +484,7 @@ const App: React.FC = () => {
                 </div>
 
                 {/* Quick Reflections Mini View */}
-                <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border dark:border-slate-800 shadow-sm space-y-6">
+                <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border dark:border-slate-800 shadow-sm space-y-6 transition-colors">
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-amber-50 dark:bg-amber-900/30 text-amber-600 rounded-xl"><Icons.Brain /></div>
                     <h3 className="font-black text-lg">Focus Point</h3>
@@ -472,7 +498,7 @@ const App: React.FC = () => {
                 </div>
 
                 {/* Export Card */}
-                <div className="p-6 bg-slate-100 dark:bg-slate-900/50 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 flex flex-col gap-3">
+                <div className="p-6 bg-slate-100 dark:bg-slate-900/50 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 flex flex-col gap-3 transition-colors">
                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Tools & Data</p>
                    <div className="flex gap-2">
                      <button onClick={() => exportData('csv')} className="flex-1 py-2 bg-white dark:bg-slate-800 rounded-xl text-xs font-bold hover:shadow-md transition-all">CSV Export</button>
@@ -493,7 +519,7 @@ const App: React.FC = () => {
              </header>
 
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-               <div className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border dark:border-slate-800 shadow-sm">
+               <div className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border dark:border-slate-800 shadow-sm transition-colors">
                   <h3 className="text-lg font-black mb-8 flex items-center gap-3">
                     <Icons.Check /> Task Completion Rate
                   </h3>
@@ -524,7 +550,7 @@ const App: React.FC = () => {
                    { l: 'Most Productive', v: '10 AM', t: 'Focus window' },
                    { l: 'Completion Streak', v: '5 Days', t: 'Personal best: 14' }
                  ].map((stat, i) => (
-                   <div key={i} className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border dark:border-slate-800 shadow-sm flex flex-col justify-between">
+                   <div key={i} className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border dark:border-slate-800 shadow-sm flex flex-col justify-between transition-colors">
                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{stat.l}</p>
                      <div className="mt-4">
                        <p className="text-3xl font-black">{stat.v}</p>
@@ -557,7 +583,7 @@ const App: React.FC = () => {
 
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                {habits.map(habit => (
-                 <div key={habit.id} className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border dark:border-slate-800 shadow-sm relative overflow-hidden group">
+                 <div key={habit.id} className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border dark:border-slate-800 shadow-sm relative overflow-hidden group transition-colors">
                    <div className="flex justify-between items-start mb-8">
                      <div>
                        <h3 className="text-2xl font-black">{habit.name}</h3>
@@ -611,7 +637,7 @@ const App: React.FC = () => {
                 <p className="text-slate-500 font-medium">Slow down and analyze your growth.</p>
              </header>
 
-             <div className="bg-white dark:bg-slate-900 rounded-[3rem] p-10 border dark:border-slate-800 shadow-sm space-y-10">
+             <div className="bg-white dark:bg-slate-900 rounded-[3rem] p-10 border dark:border-slate-800 shadow-sm space-y-10 transition-colors">
                 <div className="space-y-4">
                   <label className="text-xs font-black text-slate-400 uppercase tracking-widest block">What went exceptionally well today?</label>
                   <textarea 
@@ -670,7 +696,7 @@ const App: React.FC = () => {
       {/* Task Modal */}
       {isTaskModalOpen && (
         <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-xl p-10 rounded-[3rem] shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-xl p-10 rounded-[3rem] shadow-2xl animate-in zoom-in-95 duration-200 transition-colors">
             <header className="flex justify-between items-center mb-8">
               <h2 className="text-3xl font-black tracking-tighter">{editingTask ? 'Edit Task' : 'New Strategic Task'}</h2>
               <button onClick={() => setIsTaskModalOpen(false)} className="p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-all">
@@ -748,7 +774,7 @@ const App: React.FC = () => {
                 {editingTask && (
                    <button 
                     type="button" 
-                    onClick={() => { if(confirm("Discard this task?")) handleDeleteTask(editingTask.id); }}
+                    onClick={() => { if(confirm("Discard this task?")) handleDeleteTask(editingTask!.id); }}
                     className="p-4 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-2xl transition-all"
                    >
                      <Icons.Trash />
@@ -765,11 +791,6 @@ const App: React.FC = () => {
       )}
     </div>
   );
-};
-
-const handleDeleteTask = (id: string) => {
-  // This is a bridge to the stateful handleDeleteTask if needed, 
-  // but we can just use the setter directly in the modal component.
 };
 
 export default App;
