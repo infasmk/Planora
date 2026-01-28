@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Task, 
   Priority, 
@@ -27,6 +27,33 @@ const formatDisplayDate = (dateStr: string) => {
   const options: Intl.DateTimeFormatOptions = { weekday: 'long', month: 'long', day: 'numeric' };
   return new Date(dateStr + 'T00:00:00').toLocaleDateString(undefined, options);
 };
+
+// --- Sub-components ---
+interface SidebarButtonProps {
+  id: string;
+  label: string;
+  icon: React.ComponentType;
+  isActive: boolean;
+  onClick: () => void;
+  hasIncompleteTasks?: boolean;
+}
+
+const SidebarButton: React.FC<SidebarButtonProps> = ({ id, label, icon: Icon, isActive, onClick, hasIncompleteTasks }) => (
+  <button
+    onClick={onClick}
+    className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all w-full group ${
+      isActive 
+        ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100 dark:shadow-none font-bold' 
+        : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 dark:text-slate-400 font-medium'
+    }`}
+  >
+    <Icon />
+    <span className="text-sm">{label}</span>
+    {id === 'planner' && hasIncompleteTasks && (
+       <span className="ml-auto w-2 h-2 rounded-full bg-indigo-400 group-hover:scale-125 transition-transform"></span>
+    )}
+  </button>
+);
 
 const App: React.FC = () => {
   // --- Core State ---
@@ -233,23 +260,6 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeys);
   }, []);
 
-  const SidebarButton = ({ id, label, icon: Icon }: { id: any, label: string, icon: any }) => (
-    <button
-      onClick={() => setActiveTab(id)}
-      className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all w-full group ${
-        activeTab === id 
-          ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100 dark:shadow-none font-bold' 
-          : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 dark:text-slate-400 font-medium'
-      }`}
-    >
-      <Icon />
-      <span className="text-sm">{label}</span>
-      {id === 'planner' && stats.total > 0 && stats.score < 100 && (
-         <span className="ml-auto w-2 h-2 rounded-full bg-indigo-400 group-hover:scale-125 transition-transform"></span>
-      )}
-    </button>
-  );
-
   return (
     <div className="flex flex-col md:flex-row min-h-screen font-sans selection:bg-indigo-100 selection:text-indigo-700">
       
@@ -274,10 +284,35 @@ const App: React.FC = () => {
         </div>
         
         <nav className="space-y-3 flex-1">
-          <SidebarButton id="planner" label="Day Planner" icon={Icons.Calendar} />
-          <SidebarButton id="insights" label="Insights" icon={Icons.Chart} />
-          <SidebarButton id="habits" label="Habit Tracker" icon={Icons.Check} />
-          <SidebarButton id="reflections" label="Journal" icon={Icons.Brain} />
+          <SidebarButton 
+            id="planner" 
+            label="Day Planner" 
+            icon={Icons.Calendar} 
+            isActive={activeTab === 'planner'} 
+            onClick={() => setActiveTab('planner')}
+            hasIncompleteTasks={stats.total > 0 && stats.score < 100}
+          />
+          <SidebarButton 
+            id="insights" 
+            label="Insights" 
+            icon={Icons.Chart} 
+            isActive={activeTab === 'insights'} 
+            onClick={() => setActiveTab('insights')}
+          />
+          <SidebarButton 
+            id="habits" 
+            label="Habit Tracker" 
+            icon={Icons.Check} 
+            isActive={activeTab === 'habits'} 
+            onClick={() => setActiveTab('habits')}
+          />
+          <SidebarButton 
+            id="reflections" 
+            label="Journal" 
+            icon={Icons.Brain} 
+            isActive={activeTab === 'reflections'} 
+            onClick={() => setActiveTab('reflections')}
+          />
         </nav>
 
         <div className="mt-8 pt-8 border-t dark:border-slate-800 space-y-4">
