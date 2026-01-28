@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Task, 
   Priority, 
@@ -95,10 +95,11 @@ const App: React.FC = () => {
         if (parsed.tasks) setTasks(parsed.tasks);
         if (parsed.reflections) setReflections(parsed.reflections);
         if (parsed.habits) setHabits(parsed.habits);
+        if (parsed.theme) setTheme(parsed.theme);
       } catch (e) { console.error("Restore failed", e); }
     }
     
-    if ("Notification" in window && Notification.permission === "default") {
+    if (typeof Notification !== 'undefined' && Notification.permission === "default") {
       Notification.requestPermission();
     }
 
