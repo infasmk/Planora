@@ -2,11 +2,20 @@
 import { GoogleGenAI } from "@google/genai";
 import { Task } from "./types";
 
-// Initialize the API client using the platform-provided environment variable
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Safe access to environment variables
+const getApiKey = () => {
+  try {
+    return (typeof process !== 'undefined' && process.env?.API_KEY) || '';
+  } catch (e) {
+    return '';
+  }
+};
+
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 export const analyzeSchedule = async (tasks: Task[], date: string) => {
-  if (!process.env.API_KEY) {
+  const apiKey = getApiKey();
+  if (!apiKey) {
     return "AI Insights are unavailable. Please ensure your API key is configured in the environment.";
   }
 
